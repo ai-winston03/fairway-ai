@@ -1,0 +1,16 @@
+{
+  "name": "fairway-ai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI-first golf course & clubhouse management platform",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "test": "turbo run test"
+  },
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  }
+}
