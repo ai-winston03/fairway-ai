@@ -10,10 +10,7 @@
       "node_modules",
       ".git",
       ".next",
-      "firebase-debug.log",
-      "package.json",
-      "pnpm-workspace.yaml",
-      "turbo.json"
+      "firebase-debug.log"
     ]
   }
 }
