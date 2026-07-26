@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
   if (email !== bootstrapEmail && !invite.exists) return genericSuccess();
 
   const smtpPassword = process.env.FAIRWAY_SMTP_PASSWORD;
-  const smtpFrom = process.env.FAIRWAY_SMTP_FROM ?? "Fairway AI <ai.winston@icloud.com>";
+  const smtpFrom = process.env.FAIRWAY_SMTP_FROM ?? "Fairway AI <ai.winston03@gmail.com>";
   if (!smtpPassword) return NextResponse.json({ error: "Secure email delivery is temporarily unavailable." }, { status: 503 });
 
   // App Hosting proxies requests to an internal Cloud Run hostname. Firebase
@@ -38,11 +38,10 @@ export async function POST(request: NextRequest) {
   const origin = "https://fairway-ai--fairway-ai-yuba.us-central1.hosted.app";
   const link = await firebase.auth.generateSignInWithEmailLink(email, { url: origin, handleCodeInApp: true });
   const transport = nodemailer.createTransport({
-    host: "smtp.mail.me.com",
-    port: 587,
-    secure: false,
-    auth: { user: "ai.winston@icloud.com", pass: smtpPassword },
-    requireTLS: true
+    host: "smtp.gmail.com",
+    port: 465,
+    secure: true,
+    auth: { user: "ai.winston03@gmail.com", pass: smtpPassword }
   });
   await transport.sendMail({
     from: smtpFrom,

@@ -10,7 +10,7 @@ env:
     value: https://fairway-ai--fairway-ai-yuba.us-central1.hosted.app
     availability: [RUNTIME]
   - variable: FAIRWAY_SMTP_FROM
-    value: "Fairway AI <ai.winston@icloud.com>"
+    value: "Fairway AI <ai.winston03@gmail.com>"
     availability: [RUNTIME]
   - variable: FAIRWAY_SMTP_PASSWORD
     secret: FAIRWAY_SMTP_PASSWORD
