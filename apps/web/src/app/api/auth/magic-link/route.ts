@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
 
   // App Hosting proxies requests to an internal Cloud Run hostname. Firebase
   // only accepts the public, allowlisted return URL for its action links.
-  const origin = process.env.FAIRWAY_AI_BASE_URL ?? new URL(request.url).origin;
+  const origin = "https://fairway-ai--fairway-ai-yuba.us-central1.hosted.app";
   const link = await firebase.auth.generateSignInWithEmailLink(email, { url: origin, handleCodeInApp: true });
   const transport = nodemailer.createTransport({
     host: "smtp.mail.me.com",
