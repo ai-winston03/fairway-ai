@@ -6,6 +6,9 @@ env:
   - variable: FAIRWAY_BOOTSTRAP_ADMIN_EMAIL
     value: logan@grizzlygroup.co
     availability: [RUNTIME]
+  - variable: FAIRWAY_AI_BASE_URL
+    value: https://fairway-ai--fairway-ai-yuba.us-central1.hosted.app
+    availability: [RUNTIME]
   - variable: FAIRWAY_SMTP_FROM
     value: "Fairway AI <ai.winston@icloud.com>"
     availability: [RUNTIME]
