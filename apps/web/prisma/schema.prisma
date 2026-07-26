@@ -1,0 +1,442 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Course {
+  id             String          @id
+  name           String
+  foreupCourseId String          @unique
+  members        Member[]
+  bookings       Booking[]
+  sales          Sale[]
+  leads          Lead[]
+  workflows      Workflow[]
+  importBatches  ForeupImportBatch[]
+  scheduledJobs  ScheduledMessageJob[]
+  teamAccess     TeamCourseAccess[]
+  kpiGroups      KpiGroup[]
+  hrReports      HrReport[]
+  workerRuns     WorkerRun[]
+  integrationAccounts IntegrationAccount[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+}
+
+model StaffUser {
+  id           String             @id @default(cuid())
+  email        String             @unique
+  name         String
+  status       String             @default("active")
+  lastLoginAt  DateTime?
+  access       TeamCourseAccess[]
+  magicLinks   MagicLinkToken[]
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  @@index([status, email])
+}
+
+model TeamCourseAccess {
+  id           String    @id @default(cuid())
+  userId       String
+  courseId     String
+  role         String
+  department   String
+  permissions  String[]  @default([])
+  kpiGroupKeys String[]  @default([])
+  user         StaffUser @relation(fields: [userId], references: [id])
+  course       Course    @relation(fields: [courseId], references: [id])
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([userId, courseId])
+  @@index([courseId, role, department])
+}
+
+model MagicLinkToken {
+  id          String     @id @default(cuid())
+  userId      String?
+  email       String
+  tokenHash   String
+  expiresAt   DateTime
+  consumedAt  DateTime?
+  createdAt   DateTime   @default(now())
+  user        StaffUser? @relation(fields: [userId], references: [id])
+
+  @@index([email, expiresAt])
+  @@index([tokenHash])
+}
+
+model KpiGroup {
+  id             String   @id @default(cuid())
+  courseId       String
+  key            String
+  label          String
+  department     String
+  metrics        String[] @default([])
+  visibleToRoles String[] @default([])
+  course         Course   @relation(fields: [courseId], references: [id])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([courseId, key])
+  @@index([courseId, department])
+}
+
+model Member {
+  id               String          @id @default(cuid())
+  courseId         String
+  foreupCustomerId String?
+  name             String
+  phone            String
+  email            String?
+  membershipType   String
+  status           String          @default("active")
+  allowSms         Boolean         @default(false)
+  smsConsentStatus String          @default("unknown")
+  smsConsentAt     DateTime?
+  smsOptOutAt      DateTime?
+  // Values include membership_signup_sheet, direct_signup, provider_keyword, and imported.
+  // A current ForeUp opt-out always suppresses this consent state.
+  smsConsentSource String          @default("unverified")
+  foreupTextOptOut Boolean?
+  foreupTextStatusSyncedAt DateTime?
+  timezone         String          @default("America/Los_Angeles")
+  tags             String[]        @default([])
+  arBalanceCents   Int             @default(0)
+  lastForeupSyncAt DateTime?
+  course           Course          @relation(fields: [courseId], references: [id])
+  bookings         BookingPlayer[]
+  sales            Sale[]
+  conversations    ChatConversation[]
+  messages         ChatMessage[]
+  scheduledJobs    ScheduledMessageJob[]
+  campaignRecipients CampaignRecipient[]
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@index([courseId, phone])
+  @@index([courseId, foreupCustomerId])
+  @@index([courseId, status, membershipType])
+  @@unique([courseId, foreupCustomerId])
+}
+
+model MessagingCampaign {
+  id          String              @id @default(cuid())
+  courseId    String
+  name        String
+  channel     String              @default("sms")
+  audience    Json
+  bodyTemplate String
+  status      String              @default("draft")
+  scheduledAt DateTime?
+  createdBy   String?
+  recipients  CampaignRecipient[]
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  @@index([courseId, status, scheduledAt])
+}
+
+model CampaignRecipient {
+  id          String             @id @default(cuid())
+  campaignId  String
+  memberId    String
+  status      String             @default("queued")
+  providerId  String?
+  sentAt      DateTime?
+  campaign    MessagingCampaign  @relation(fields: [campaignId], references: [id])
+  member      Member             @relation(fields: [memberId], references: [id])
+
+  @@unique([campaignId, memberId])
+  @@index([memberId, status])
+}
+
+model Booking {
+  id              String          @id @default(cuid())
+  courseId        String
+  foreupBookingId String?
+  teeSheetId      String
+  startsAt        DateTime
+  status          String
+  guestCount      Int             @default(0)
+  cartCount       Int             @default(0)
+  source          String          @default("sms")
+  course          Course          @relation(fields: [courseId], references: [id])
+  players         BookingPlayer[]
+  sales           Sale[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([courseId, startsAt])
+  @@index([foreupBookingId])
+}
+
+model BookingPlayer {
+  id        String   @id @default(cuid())
+  bookingId String
+  memberId  String?
+  name      String
+  isGuest   Boolean  @default(false)
+  booking   Booking  @relation(fields: [bookingId], references: [id])
+  member    Member?  @relation(fields: [memberId], references: [id])
+
+  @@index([bookingId])
+  @@index([memberId])
+}
+
+model Sale {
+  id           String     @id @default(cuid())
+  courseId     String
+  memberId     String?
+  bookingId    String?
+  foreupSaleId String?
+  category     String
+  totalCents   Int
+  soldAt       DateTime
+  course       Course     @relation(fields: [courseId], references: [id])
+  member       Member?    @relation(fields: [memberId], references: [id])
+  booking      Booking?   @relation(fields: [bookingId], references: [id])
+  items        SaleItem[]
+
+  @@index([courseId, soldAt])
+  @@index([memberId, soldAt])
+  @@index([foreupSaleId])
+}
+
+model SaleItem {
+  id         String @id @default(cuid())
+  saleId     String
+  foreupItemId String?
+  name       String
+  category   String
+  quantity   Int
+  unitCents  Int
+  sale       Sale   @relation(fields: [saleId], references: [id])
+
+  @@index([category, name])
+}
+
+model Lead {
+  id        String   @id @default(cuid())
+  courseId  String
+  source    String
+  name      String
+  phone     String?
+  status    String
+  notes     String?
+  course    Course   @relation(fields: [courseId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@index([courseId, source, status])
+}
+
+model Workflow {
+  id                String   @id @default(cuid())
+  courseId          String
+  name              String
+  trigger           String
+  status            String
+  audience          String
+  rules             Json
+  steps             Json
+  verification      Json
+  fallback          String
+  course            Course   @relation(fields: [courseId], references: [id])
+  scheduledJobs     ScheduledMessageJob[]
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([courseId, trigger, status])
+}
+
+model ForeupImportBatch {
+  id           String            @id @default(cuid())
+  courseId     String
+  source       String            @default("foreup")
+  status       String            @default("pending")
+  imported     Int               @default(0)
+  updated      Int               @default(0)
+  skipped      Int               @default(0)
+  error        String?
+  startedAt    DateTime          @default(now())
+  completedAt  DateTime?
+  course       Course            @relation(fields: [courseId], references: [id])
+  rows         ForeupImportRow[]
+
+  @@index([courseId, status, startedAt])
+}
+
+model ForeupImportRow {
+  id          String            @id @default(cuid())
+  batchId     String
+  foreupId    String?
+  status      String
+  memberId    String?
+  payload     Json
+  error       String?
+  batch       ForeupImportBatch @relation(fields: [batchId], references: [id])
+
+  @@index([batchId, status])
+  @@index([foreupId])
+}
+
+model ChatConversation {
+  id          String        @id @default(cuid())
+  courseId    String
+  memberId    String
+  channel     String
+  status      String        @default("open")
+  automationStatus String    @default("bot_active")
+  activeWorkflowId String?
+  pausedByUserId String?
+  pausedAt    DateTime?
+  lastMessageAt DateTime?
+  openaiConversationId String?
+  handoffReason String?
+  handoffAt    DateTime?
+  member      Member        @relation(fields: [memberId], references: [id])
+  messages    ChatMessage[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([courseId, status, lastMessageAt])
+  @@index([courseId, automationStatus])
+  @@index([memberId, channel])
+}
+
+model ChatMessage {
+  id             String            @id @default(cuid())
+  conversationId String
+  memberId       String
+  channel        String
+  direction      String
+  body           String
+  source         String            @default("script")
+  status         String            @default("sent")
+  providerId     String?
+  sentAt         DateTime?
+  createdAt      DateTime          @default(now())
+  conversation   ChatConversation  @relation(fields: [conversationId], references: [id])
+  member         Member            @relation(fields: [memberId], references: [id])
+
+  @@index([conversationId, createdAt])
+  @@index([memberId, createdAt])
+  @@index([providerId])
+}
+
+model ScheduledMessageJob {
+  id             String    @id @default(cuid())
+  courseId       String
+  memberId       String?
+  workflowId     String?
+  name           String
+  cronExpression String
+  channel        String
+  templateKey    String
+  aiAllowed      Boolean   @default(false)
+  status         String    @default("active")
+  nextRunAt      DateTime
+  lastRunAt      DateTime?
+  lastError      String?
+  payload        Json
+  course         Course    @relation(fields: [courseId], references: [id])
+  member         Member?   @relation(fields: [memberId], references: [id])
+  workflow       Workflow? @relation(fields: [workflowId], references: [id])
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([courseId, status, nextRunAt])
+  @@index([memberId, status])
+  @@index([workflowId])
+}
+
+model IntegrationAccount {
+  id             String    @id @default(cuid())
+  courseId       String
+  provider       String
+  status         String    @default("not_connected")
+  externalId     String?
+  scopes         String[]  @default([])
+  lastSyncedAt   DateTime?
+  lastError      String?
+  config         Json      @default("{}")
+  course         Course    @relation(fields: [courseId], references: [id])
+  workerRuns     WorkerRun[]
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([courseId, provider])
+  @@index([provider, status])
+}
+
+model HrReport {
+  id             String   @id @default(cuid())
+  courseId       String
+  provider       String   @default("gusto")
+  periodStart    DateTime
+  periodEnd      DateTime
+  department     String
+  grossPayCents  Int
+  laborHours     Float
+  overtimeHours  Float    @default(0)
+  headcount      Int
+  sourcePayload  Json
+  course         Course   @relation(fields: [courseId], references: [id])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([courseId, periodStart, periodEnd])
+  @@index([courseId, department])
+}
+
+model WorkerRun {
+  id                   String              @id @default(cuid())
+  courseId             String
+  integrationAccountId String?
+  kind                 String
+  status               String              @default("queued")
+  startedAt            DateTime?
+  completedAt          DateTime?
+  aiUsed               Boolean             @default(false)
+  summary              Json                @default("{}")
+  error                String?
+  course               Course              @relation(fields: [courseId], references: [id])
+  integrationAccount   IntegrationAccount? @relation(fields: [integrationAccountId], references: [id])
+  createdAt            DateTime            @default(now())
+
+  @@index([courseId, kind, createdAt])
+  @@index([status, createdAt])
+}
+
+model VerificationChallenge {
+  id          String   @id @default(cuid())
+  memberId    String
+  channel     String
+  purpose     String
+  codeHash    String
+  expiresAt   DateTime
+  consumedAt  DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([memberId, purpose, expiresAt])
+}
+
+model OrderHold {
+  id            String   @id @default(cuid())
+  courseId      String
+  memberId      String?
+  workflowId    String?
+  reason        String
+  status        String
+  payload       Json
+  createdAt     DateTime @default(now())
+  resolvedAt    DateTime?
+
+  @@index([courseId, status, createdAt])
+}

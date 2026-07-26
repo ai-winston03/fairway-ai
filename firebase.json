@@ -1,0 +1,19 @@
+{
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "apphosting": {
+    "backendId": "fairway-ai",
+    "rootDir": "apps/web",
+    "ignore": [
+      "node_modules",
+      ".git",
+      ".next",
+      "firebase-debug.log",
+      "package.json",
+      "pnpm-workspace.yaml",
+      "turbo.json"
+    ]
+  }
+}

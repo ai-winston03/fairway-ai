@@ -1,0 +1,36 @@
+{
+  "name": "@fairway-ai/web",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": "20.x"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "foreup:import": "node scripts/import-foreup-members.mjs",
+    "gusto:import": "node scripts/import-gusto-labor.mjs",
+    "gusto:sync": "node scripts/sync-gusto-labor.mjs",
+    "lint": "next lint",
+    "scheduler:run": "node scripts/run-scheduled-messages.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "firebase": "^12.16.0",
+    "firebase-admin": "^14.2.0",
+    "lucide-react": "^0.468.0",
+    "next": "14.2.24",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.5.1",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.2"
+  }
+}

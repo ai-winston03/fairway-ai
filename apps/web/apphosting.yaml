@@ -1,0 +1,35 @@
+runConfig:
+  minInstances: 0
+  maxInstances: 3
+
+env:
+  - variable: FAIRWAY_BOOTSTRAP_ADMIN_EMAIL
+    value: logan@grizzlygroup.co
+    availability: [RUNTIME]
+  - variable: FOREUP_BASE_URL
+    value: https://api.foreupsoftware.com/api_rest/index.php
+    availability: [RUNTIME]
+  - variable: FOREUP_API_EMAIL
+    secret: FOREUP_API_EMAIL
+    availability: [RUNTIME]
+  - variable: FOREUP_API_PASSWORD
+    secret: FOREUP_API_PASSWORD
+    availability: [RUNTIME]
+  - variable: FOREUP_COURSE_ID
+    secret: FOREUP_COURSE_ID
+    availability: [RUNTIME]
+  - variable: FOREUP_TEESHEET_ID
+    secret: FOREUP_TEESHEET_ID
+    availability: [RUNTIME]
+  - variable: NEXT_PUBLIC_FIREBASE_API_KEY
+    value: AIzaSyCZNHbhR0mMa_X4xiN5-38WiicGcidhj9k
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+    value: fairway-ai-yuba.firebaseapp.com
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+    value: fairway-ai-yuba
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_FIREBASE_APP_ID
+    value: 1:563725376236:web:3739110e9023c61d95a3c9
+    availability: [BUILD, RUNTIME]
