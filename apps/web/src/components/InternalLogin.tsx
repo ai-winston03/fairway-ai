@@ -48,7 +48,7 @@ export function InternalLogin({ error }: InternalLoginProps) {
       const payload = await response.json() as { error?: string };
       if (!response.ok) throw new Error(payload.error ?? "Sign-in email could not be sent.");
       window.localStorage.setItem("fairway_magic_link_email", normalizedEmail);
-      setMessage(`If ${normalizedEmail} has staff access, a secure sign-in link is on its way. Open it in this browser to continue.`);
+      setMessage("A secure sign-in link is on its way. Open it in this browser to continue.");
     } catch (signInError) {
       setMessage(signInError instanceof Error ? signInError.message : "Sign-in could not be completed.");
     } finally { setWorking(false); }
