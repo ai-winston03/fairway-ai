@@ -1,6 +1,6 @@
 "use client";
 
-import { isSignInWithEmailLink, sendSignInLinkToEmail, signInWithEmailLink } from "firebase/auth";
+import { isSignInWithEmailLink, signInWithEmailLink } from "firebase/auth";
 import { Mail, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { firebaseAuth, firebaseEnabled } from "@/lib/firebase-client";
@@ -40,13 +40,15 @@ export function InternalLogin({ error }: InternalLoginProps) {
         window.localStorage.removeItem("fairway_magic_link_email");
         return;
       }
-      const url = window.location.origin;
-      await sendSignInLinkToEmail(firebaseAuth, normalizedEmail, {
-        url,
-        handleCodeInApp: true
+      const response = await fetch("/api/auth/magic-link", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: normalizedEmail })
       });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "Sign-in email could not be sent.");
       window.localStorage.setItem("fairway_magic_link_email", normalizedEmail);
-      setMessage(`A secure sign-in link was sent to ${normalizedEmail}. Open it in this browser to continue.`);
+      setMessage(`If ${normalizedEmail} has staff access, a secure sign-in link is on its way. Open it in this browser to continue.`);
     } catch (signInError) {
       setMessage(signInError instanceof Error ? signInError.message : "Sign-in could not be completed.");
     } finally { setWorking(false); }

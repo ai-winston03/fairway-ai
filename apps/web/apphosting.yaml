@@ -6,6 +6,12 @@ env:
   - variable: FAIRWAY_BOOTSTRAP_ADMIN_EMAIL
     value: logan@grizzlygroup.co
     availability: [RUNTIME]
+  - variable: FAIRWAY_SMTP_FROM
+    value: "Fairway AI <ai.winston@icloud.com>"
+    availability: [RUNTIME]
+  - variable: FAIRWAY_SMTP_PASSWORD
+    secret: FAIRWAY_SMTP_PASSWORD
+    availability: [RUNTIME]
   - variable: FOREUP_BASE_URL
     value: https://api.foreupsoftware.com/api_rest/index.php
     availability: [RUNTIME]
