@@ -1,0 +1,43 @@
+# These operations are intentionally server-only.  Next route handlers verify
+# staff access before calling the generated Admin SDK.
+
+query ListDailyGolfMetrics(
+  $courseId: String!
+  $teeSheetId: String!
+  $start: Date!
+  $end: Date!
+) @auth(level: NO_ACCESS) {
+  dailyGolfMetrics(
+    where: {
+      _and: [
+        { courseId: { eq: $courseId } }
+        { teeSheetId: { eq: $teeSheetId } }
+        { date: { ge: $start } }
+        { date: { le: $end } }
+      ]
+    }
+    orderBy: [{ date: ASC }]
+  ) {
+    courseId
+    teeSheetId
+    date
+    bookings
+    occupancy
+    playersCheckedIn
+    playerNoShows
+    potentialSlots
+    slotsAvailable
+    revenue
+    memberRounds
+    memberBookings
+    memberCarts
+    memberGreenFeeRevenue
+    nonMemberRounds
+    nonMemberBookings
+    nonMemberCarts
+    nonMemberGreenFeeRevenue
+    unclassifiedRounds
+    sourceBookings
+    syncedAt
+  }
+}

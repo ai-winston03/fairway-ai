@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { foreup } from "@/lib/foreup-adapter";
-import { cachedForeup } from "@/lib/foreup-cache";
 import { verifiedStaff } from "@/lib/staff-access";
+import { readGolfReport } from "@/lib/golf-reporting-store";
 
 type Period = { start: string; end: string; label: string };
 
@@ -39,13 +38,10 @@ export async function GET(request: NextRequest) {
   if (!courseId || !teeSheetId) return NextResponse.json({ foreupLive: { connected: false, error: "ForeUp course configuration is missing." } }, { status: 503 });
   const today = yubaToday(), period = reportPeriod(request.nextUrl.searchParams, today);
   try {
-    const golf = await cachedForeup(
-      `golf-summary:${courseId}:${teeSheetId}:${period.start}:${period.end}:${today}`,
-      60_000,
-      () => foreup.getGolfSnapshot(courseId, teeSheetId, period, today)
-    );
-    return NextResponse.json({ foreupLive: { connected: true, golf } }, { headers: { "Cache-Control": "no-store" } });
+    const golf = await readGolfReport(courseId, teeSheetId, period, today);
+    if (!golf) return NextResponse.json({ foreupLive: { connected: false, error: "Reporting data is not synced yet. Run the ForeUp reporting sync to load this range." } }, { status: 503 });
+    return NextResponse.json({ foreupLive: { connected: true, golf, source: "postgres" } }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
-    return NextResponse.json({ foreupLive: { connected: false, error: error instanceof Error ? error.message : "ForeUp unavailable" } }, { status: 502 });
+    return NextResponse.json({ foreupLive: { connected: false, error: error instanceof Error ? error.message : "Reporting database unavailable" } }, { status: 502 });
   }
 }

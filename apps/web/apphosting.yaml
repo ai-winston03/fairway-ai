@@ -9,12 +9,6 @@ env:
   - variable: FAIRWAY_AI_BASE_URL
     value: https://fairway-ai--fairway-ai-yuba.us-central1.hosted.app
     availability: [RUNTIME]
-  - variable: FAIRWAY_SMTP_FROM
-    value: "Fairway AI <ai.winston03@gmail.com>"
-    availability: [RUNTIME]
-  - variable: FAIRWAY_SMTP_PASSWORD
-    secret: FAIRWAY_SMTP_PASSWORD
-    availability: [RUNTIME]
   - variable: FOREUP_BASE_URL
     value: https://api.foreupsoftware.com/api_rest/index.php
     availability: [RUNTIME]
@@ -29,6 +23,9 @@ env:
     availability: [RUNTIME]
   - variable: FOREUP_TEESHEET_ID
     secret: FOREUP_TEESHEET_ID
+    availability: [RUNTIME]
+  - variable: FOREUP_SYNC_SECRET
+    secret: FOREUP_SYNC_SECRET
     availability: [RUNTIME]
   - variable: NEXT_PUBLIC_FIREBASE_API_KEY
     value: AIzaSyCZNHbhR0mMa_X4xiN5-38WiicGcidhj9k

@@ -9,6 +9,7 @@
     "dev": "next dev",
     "build": "next build",
     "foreup:import": "node scripts/import-foreup-members.mjs",
+    "foreup:reporting-sync": "node scripts/sync-foreup-reporting.mjs",
     "gusto:import": "node scripts/import-gusto-labor.mjs",
     "gusto:sync": "node scripts/sync-gusto-labor.mjs",
     "lint": "next lint",
@@ -16,18 +17,17 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@dataconnect/admin-generated": "file:src/dataconnect-admin-generated",
     "firebase": "^12.16.0",
     "firebase-admin": "^14.2.0",
     "lucide-react": "^0.468.0",
     "next": "^15.5.9",
-    "nodemailer": "^9.0.3",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "zod": "^3.24.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
-    "@types/nodemailer": "^8.0.1",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "autoprefixer": "^10.4.20",

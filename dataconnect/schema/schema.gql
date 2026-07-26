@@ -1,0 +1,40 @@
+# Fairway AI reporting data, stored in Firebase Data Connect (Cloud SQL Postgres).
+#
+# The dashboard reads these durable daily facts.  ForeUp is used only by the
+# scheduled sync that writes them, never by an interactive report query.
+
+type DailyGolfMetric @table(key: ["courseId", "teeSheetId", "date"]) {
+  courseId: String!
+  teeSheetId: String!
+  date: Date!
+  bookings: Int!
+  occupancy: Float!
+  playersCheckedIn: Int!
+  playerNoShows: Int!
+  potentialSlots: Int!
+  slotsAvailable: Int!
+  revenue: Float!
+  memberRounds: Int!
+  memberBookings: Int!
+  memberCarts: Int!
+  memberGreenFeeRevenue: Float!
+  nonMemberRounds: Int!
+  nonMemberBookings: Int!
+  nonMemberCarts: Int!
+  nonMemberGreenFeeRevenue: Float!
+  unclassifiedRounds: Int!
+  sourceBookings: Int!
+  syncedAt: Timestamp! @default(expr: "request.time")
+}
+
+# Keeps the scheduled import observable without putting operational state in
+# the dashboard's reporting query path.
+type ForeupSyncRun @table {
+  courseId: String!
+  teeSheetId: String!
+  startedAt: Timestamp! @default(expr: "request.time")
+  completedAt: Timestamp
+  status: String!
+  rowsWritten: Int! @default(value: 0)
+  error: String
+}

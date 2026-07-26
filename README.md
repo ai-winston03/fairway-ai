@@ -77,7 +77,7 @@ The central brain. Responsibilities:
 | Frontend | Next.js 15 (App Router) | SSR, great DX, AI streaming support |
 | Mobile | Expo (React Native) | Cross-platform, shared components |
 | API | Fastify (Node.js) | Fast, schema-first, plugin ecosystem |
-| Database | PostgreSQL + Prisma | Relational data, great type safety |
+| Database | Firebase Data Connect + Cloud SQL PostgreSQL | Managed relational reporting data with generated server SDKs |
 | Cache | Redis | Sessions, rate limiting, real-time |
 | Queue | BullMQ (Redis) | Job queues for async AI tasks |
 | AI | OpenAI / Anthropic (configurable) | Swappable via AI SDK |

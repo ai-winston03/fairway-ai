@@ -1,0 +1,53 @@
+# ForeUp sync mutations.  They are callable only through the Admin SDK.
+
+mutation UpsertDailyGolfMetric(
+  $courseId: String!
+  $teeSheetId: String!
+  $date: Date!
+  $bookings: Int!
+  $occupancy: Float!
+  $playersCheckedIn: Int!
+  $playerNoShows: Int!
+  $potentialSlots: Int!
+  $slotsAvailable: Int!
+  $revenue: Float!
+  $memberRounds: Int!
+  $memberBookings: Int!
+  $memberCarts: Int!
+  $memberGreenFeeRevenue: Float!
+  $nonMemberRounds: Int!
+  $nonMemberBookings: Int!
+  $nonMemberCarts: Int!
+  $nonMemberGreenFeeRevenue: Float!
+  $unclassifiedRounds: Int!
+  $sourceBookings: Int!
+) @auth(level: NO_ACCESS) {
+  dailyGolfMetric_upsert(
+    data: {
+      courseId: $courseId
+      teeSheetId: $teeSheetId
+      date: $date
+      bookings: $bookings
+      occupancy: $occupancy
+      playersCheckedIn: $playersCheckedIn
+      playerNoShows: $playerNoShows
+      potentialSlots: $potentialSlots
+      slotsAvailable: $slotsAvailable
+      revenue: $revenue
+      memberRounds: $memberRounds
+      memberBookings: $memberBookings
+      memberCarts: $memberCarts
+      memberGreenFeeRevenue: $memberGreenFeeRevenue
+      nonMemberRounds: $nonMemberRounds
+      nonMemberBookings: $nonMemberBookings
+      nonMemberCarts: $nonMemberCarts
+      nonMemberGreenFeeRevenue: $nonMemberGreenFeeRevenue
+      unclassifiedRounds: $unclassifiedRounds
+      sourceBookings: $sourceBookings
+    }
+  )
+}
+
+mutation StartForeupSyncRun($courseId: String!, $teeSheetId: String!) @auth(level: NO_ACCESS) {
+  foreupSyncRun_insert(data: { courseId: $courseId, teeSheetId: $teeSheetId, status: "running" })
+}
