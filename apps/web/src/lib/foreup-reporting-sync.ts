@@ -1,5 +1,5 @@
 import { foreup } from "@/lib/foreup-adapter";
-import { writeDailyGolfMetric } from "@/lib/golf-reporting-store";
+import { writeDailyCommerceMetrics, writeDailyGolfMetric } from "@/lib/golf-reporting-store";
 
 const isoDate = (date: Date) => date.toISOString().slice(0, 10);
 
@@ -14,6 +14,7 @@ export async function syncForeupReportingRange(courseId: string, teeSheetId: str
     const day = isoDate(date);
     const snapshot = await foreup.getGolfSnapshot(courseId, teeSheetId, { start: day, end: day, label: day }, day);
     await writeDailyGolfMetric({ courseId, teeSheetId, date: day, snapshot });
+    await writeDailyCommerceMetrics(courseId, teeSheetId, day, snapshot.commerce);
   }
   return { start, end, rowsWritten: days };
 }

@@ -1,8 +1,9 @@
 "use client";
 
-import { CalendarDays, CircleGauge, ClipboardList, Cloud, Flag, MessageSquareText, ReceiptText, RefreshCw, Users } from "lucide-react";
-import { useEffect, useState } from "react";
+import { CalendarDays, ChartNoAxesCombined, CircleGauge, ClipboardList, Cloud, Flag, MessageSquareText, ReceiptText, RefreshCw, Users } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { MemberWorkspace } from "@/components/MemberWorkspace";
+import { evaluateWorkflowSafety, workflowLibrary } from "@/lib/workflows";
 
 export type OperationsArea = "golf" | "pro-shop" | "clubhouse" | "members" | "automations" | "platform";
 type ReportRange = "mtd" | "last-month" | "this-quarter" | "last-quarter" | "ytd" | "custom";
@@ -16,10 +17,20 @@ type GolfSnapshot = {
   unclassifiedRounds: number;
   priceClasses: string[];
   sourceBookings: number;
+  daily?: Array<{ date: string; rounds: number; bookings: number; occupancy: number; potentialSlots: number; slotsAvailable: number; revenue: number; greenFeeRevenue: number }>;
+};
+type CommerceReport = {
+  period: { start: string; end: string; label: string };
+  proShop: { transactions: number; unitsSold: number; revenue: number };
+  clubhouse: { transactions: number; unitsSold: number; revenue: number };
+  snackShack: { transactions: number; unitsSold: number; revenue: number };
+  bar: { transactions: number; unitsSold: number; revenue: number };
+  fnbUnassigned: { transactions: number; unitsSold: number; revenue: number };
+  daily: Array<{ date: string; department: "pro_shop" | "snack_shack" | "bar" | "fnb_unassigned"; transactions: number; unitsSold: number; revenue: number }>;
 };
 
 const areas: Record<OperationsArea, { label: string; eyebrow: string; title: string; description: string; tabs: string[] }> = {
-  golf: { label: "Golf", eyebrow: "Live ForeUp", title: "Golf operations", description: "Live tee-sheet health and member versus non-member play.", tabs: ["Overview", "Member play", "Non-member play", "Tee sheet"] },
+  golf: { label: "Golf", eyebrow: "Reporting database", title: "Golf operations", description: "Synced tee-sheet performance, member mix, and operating health.", tabs: ["Overview", "Member play", "Non-member play", "Tee sheet"] },
   "pro-shop": { label: "Pro Shop", eyebrow: "ForeUp", title: "Pro shop", description: "Sales, carts, and inventory will appear as each live feed is connected.", tabs: ["Overview", "Sales", "Inventory"] },
   clubhouse: { label: "Clubhouse", eyebrow: "ForeUp", title: "Clubhouse", description: "Food, beverage, and event operations in one place.", tabs: ["Overview", "Food & beverage", "Events"] },
   members: { label: "Members", eyebrow: "ForeUp", title: "Members", description: "A real member directory starts with an approved sync—not invented rows.", tabs: ["Directory", "Activity", "Accounts"] },
@@ -27,71 +38,95 @@ const areas: Record<OperationsArea, { label: string; eyebrow: string; title: str
   platform: { label: "Platform", eyebrow: "System", title: "Connections", description: "Service health and data-source status.", tabs: ["Connections", "Data sync", "Access"] }
 };
 
-export function InternalDashboard({ area }: { area: OperationsArea }) {
-  const [activeTab, setActiveTab] = useState(areas[area].tabs[0]);
+export function InternalDashboard({ area, requestedTab }: { area: OperationsArea; requestedTab?: string }) {
+  const [activeTab, setActiveTab] = useState(requestedTab ?? areas[area].tabs[0]);
   const [golf, setGolf] = useState<GolfSnapshot | null>(null);
+  const [commerce, setCommerce] = useState<CommerceReport | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
-  const [range, setRange] = useState<ReportRange>("mtd");
   const [rangeSelection, setRangeSelection] = useState<ReportRange>("mtd");
-  const [customStart, setCustomStart] = useState("");
-  const [customEnd, setCustomEnd] = useState("");
+  const [customStart, setCustomStart] = useState(isoToday());
+  const [customEnd, setCustomEnd] = useState(isoToday());
   const [reloadKey, setReloadKey] = useState(0);
   const [isLoadingGolf, setIsLoadingGolf] = useState(false);
   const [golfUpdatedAt, setGolfUpdatedAt] = useState<Date | null>(null);
   const config = areas[area];
+  const reportQuery = useMemo(() => {
+    if (rangeSelection === "custom") {
+      return customStart && customEnd && customStart <= customEnd
+        ? { range: "custom", start: customStart, end: customEnd }
+        : null;
+    }
+    return { range: rangeSelection };
+  }, [rangeSelection, customStart, customEnd]);
 
-  useEffect(() => setActiveTab(areas[area].tabs[0]), [area]);
+  useEffect(() => setActiveTab(requestedTab && areas[area].tabs.includes(requestedTab) ? requestedTab : areas[area].tabs[0]), [area, requestedTab]);
   useEffect(() => {
     const controller = new AbortController();
-    if (range === "custom" && (!customStart || !customEnd)) return () => controller.abort();
-    const query = new URLSearchParams({ range });
-    if (range === "custom") { query.set("start", customStart); query.set("end", customEnd); }
+    if (!reportQuery) return () => controller.abort();
+    const query = new URLSearchParams({ range: reportQuery.range });
+    if (reportQuery.range === "custom") { query.set("start", reportQuery.start); query.set("end", reportQuery.end); }
     query.set("_", String(reloadKey));
     setIsLoadingGolf(true);
     setConnectionError(null);
     fetch(`${apiBasePath()}/api/dashboard/summary?${query}`, { cache: "no-store", signal: controller.signal })
       .then((response) => response.json())
       .then((payload) => {
-        if (payload.foreupLive?.connected) { setGolf(payload.foreupLive.golf); setGolfUpdatedAt(new Date()); }
+        if (payload.foreupLive?.connected) { setGolf(payload.foreupLive.golf ?? null); setCommerce(payload.foreupLive.commerce ?? null); setGolfUpdatedAt(new Date()); }
         else setConnectionError(payload.foreupLive?.error ?? "ForeUp is unavailable.");
       })
       .catch((error: unknown) => { if ((error as { name?: string }).name !== "AbortError") setConnectionError("Unable to load ForeUp."); })
       .finally(() => { if (!controller.signal.aborted) setIsLoadingGolf(false); });
     return () => controller.abort();
-  }, [range, customStart, customEnd, reloadKey]);
+  }, [reportQuery, reloadKey]);
 
+  const golfStatus = connectionError ? "Needs attention" : golf || commerce ? "Reporting data synced" : "Loading reporting data";
   return <section className="operations-dashboard" aria-label={`${config.label} workspace`}>
-    <header className="operations-hero"><div><div className="eyebrow">{config.eyebrow}</div><h2>{config.title}</h2><p>{config.description}</p></div><div className={`connection-badge ${connectionError ? "warning" : ""}`}><span />{connectionError ? "Needs attention" : "ForeUp connected"}</div></header>
+    <header className="operations-hero"><div><div className="eyebrow">{config.eyebrow}</div><h2>{config.title}</h2><p>{config.description}</p></div><div className={`connection-badge ${connectionError ? "warning" : ""}`}><span />{area === "golf" || area === "platform" ? golfStatus : "ForeUp connected"}</div></header>
     <nav className="operations-tabs" aria-label={`${config.label} submenu`}>{config.tabs.map((tab) => <button aria-pressed={activeTab === tab} className={activeTab === tab ? "active" : ""} key={tab} onClick={() => setActiveTab(tab)} type="button">{tab}</button>)}</nav>
-    {area === "golf" && <ReportRangeControl range={rangeSelection} onRangeChange={(value) => { setRangeSelection(value); if (value !== "custom") setRange(value); }} customStart={customStart} customEnd={customEnd} setCustomStart={setCustomStart} setCustomEnd={setCustomEnd} onApplyCustom={() => { if (customStart && customEnd && customStart <= customEnd) { setRange("custom"); setReloadKey((value) => value + 1); } }} onRefresh={() => setReloadKey((value) => value + 1)} isLoading={isLoadingGolf} updatedAt={golfUpdatedAt} />}
-    {area === "golf" ? <GolfPanel golf={golf} error={connectionError} tab={activeTab} /> : area === "members" ? <MembersPanel /> : <EmptyArea area={area} tab={activeTab} />}
+    {(area === "golf" || area === "pro-shop" || area === "clubhouse") && <ReportRangeControl range={rangeSelection} onRangeChange={setRangeSelection} customStart={customStart} customEnd={customEnd} setCustomStart={setCustomStart} setCustomEnd={setCustomEnd} onRefresh={() => setReloadKey((value) => value + 1)} isLoading={isLoadingGolf} updatedAt={golfUpdatedAt} />}
+    {area === "golf" ? <GolfPanel golf={golf} error={connectionError} tab={activeTab} /> : area === "members" ? <MembersPanel /> : area === "pro-shop" || area === "clubhouse" ? <CommercePanel area={area} commerce={commerce} error={connectionError} tab={activeTab} /> : area === "automations" ? <AutomationsPanel tab={activeTab} /> : area === "platform" ? <PlatformPanel golf={golf} commerce={commerce} error={connectionError} tab={activeTab} /> : <EmptyArea area={area} tab={activeTab} />}
   </section>;
 }
 
-function ReportRangeControl({ range, onRangeChange, customStart, customEnd, setCustomStart, setCustomEnd, onApplyCustom, onRefresh, isLoading, updatedAt }: { range: ReportRange; onRangeChange: (value: ReportRange) => void; customStart: string; customEnd: string; setCustomStart: (value: string) => void; setCustomEnd: (value: string) => void; onApplyCustom: () => void; onRefresh: () => void; isLoading: boolean; updatedAt: Date | null }) {
+function ReportRangeControl({ range, onRangeChange, customStart, customEnd, setCustomStart, setCustomEnd, onRefresh, isLoading, updatedAt }: { range: ReportRange; onRangeChange: (value: ReportRange) => void; customStart: string; customEnd: string; setCustomStart: (value: string) => void; setCustomEnd: (value: string) => void; onRefresh: () => void; isLoading: boolean; updatedAt: Date | null }) {
   const presets: Array<[ReportRange, string]> = [["mtd", "Month to date"], ["last-month", "Last month"], ["this-quarter", "This quarter"], ["last-quarter", "Last quarter"], ["ytd", "Year to date"]];
-  return <div className="report-range" aria-label="Report date range"><label className="report-period-select"><span>Report period</span><select aria-label="Report period" onChange={(event) => onRangeChange(event.target.value as ReportRange)} value={range}>{presets.map(([key, label]) => <option key={key} value={key}>{label}</option>)}<option value="custom">Custom range</option></select></label>{range === "custom" && <div className="custom-date-fields"><label>From <input max={customEnd || undefined} onChange={(event) => setCustomStart(event.target.value)} type="date" value={customStart} /></label><label>To <input min={customStart || undefined} onChange={(event) => setCustomEnd(event.target.value)} type="date" value={customEnd} /></label><button className="apply-range" disabled={!customStart || !customEnd || customStart > customEnd} onClick={onApplyCustom} type="button">Apply</button></div>}<div className="report-range-meta">{isLoading ? <span className="range-loading">Updating report…</span> : updatedAt ? <span>Live data · updated {updatedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span> : null}<button aria-label="Refresh report" className="refresh-report" disabled={isLoading} onClick={onRefresh} title="Refresh report" type="button"><RefreshCw aria-hidden="true" size={14} /></button></div></div>;
+  return <div className="report-range" aria-label="Report date range"><label className="report-period-select"><span>Report period</span><select aria-label="Report period" onChange={(event) => onRangeChange(event.target.value as ReportRange)} value={range}>{presets.map(([key, label]) => <option key={key} value={key}>{label}</option>)}<option value="custom">Custom range</option></select></label>{range === "custom" && <div className="custom-date-fields"><label><span>From</span><input max={customEnd || undefined} onChange={(event) => setCustomStart(event.target.value)} type="date" value={customStart} /></label><label><span>To</span><input min={customStart || undefined} onChange={(event) => setCustomEnd(event.target.value)} type="date" value={customEnd} /></label><small>{customStart > customEnd ? "End date must be on or after the start date." : "Updates automatically when both dates are valid."}</small></div>}<div className="report-range-meta">{isLoading ? <span className="range-loading">Updating report…</span> : updatedAt ? <span>Live data · updated {updatedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span> : null}<button aria-label="Refresh report" className="refresh-report" disabled={isLoading} onClick={onRefresh} title="Refresh report" type="button"><RefreshCw aria-hidden="true" size={14} /></button></div></div>;
 }
 
 function GolfPanel({ golf, error, tab }: { golf: GolfSnapshot | null; error: string | null; tab: string }) {
-  if (error) return <section className="empty-area"><CircleGauge size={24} /><strong>Live golf data needs attention</strong><span>{error}</span></section>;
-  if (!golf) return <section className="empty-area"><CircleGauge size={24} /><strong>Loading live golf data</strong><span>No placeholder figures are displayed while ForeUp responds.</span></section>;
+  if (error) return <section className="empty-area"><CircleGauge size={24} /><strong>Golf reporting needs attention</strong><span>{error}</span></section>;
+  if (!golf) return <section className="empty-area"><CircleGauge size={24} /><strong>Loading golf reporting</strong><span>No placeholder figures are displayed while the reporting database responds.</span></section>;
   const totalRounds = golf.member.rounds + golf.nonMember.rounds;
+  const allRounds = totalRounds + golf.unclassifiedRounds;
   const memberShare = totalRounds ? golf.member.rounds / totalRounds : 0;
 
   if (tab === "Member play") return <SegmentPanel label="Member play" segment={golf.member} totalRounds={totalRounds} period={golf.period.label} variant="member" />;
   if (tab === "Non-member play") return <SegmentPanel label="Non-member play" segment={golf.nonMember} totalRounds={totalRounds} period={golf.period.label} variant="guest" />;
   if (tab === "Tee sheet") return <TeeSheetPanel golf={golf} />;
 
+  const classifiedPlayNote = totalRounds ? `${percent(memberShare)} of classified play` : "No classified play in this range";
+  const nonMemberPlayNote = totalRounds ? `${percent(1 - memberShare)} of classified play` : "No classified play in this range";
+  const daily = golf.daily ?? [];
+  const totalRevenue = daily.reduce((total, day) => total + day.revenue, 0);
+  const totalGreenFees = daily.reduce((total, day) => total + day.greenFeeRevenue, 0);
+  const totalCapacity = daily.reduce((total, day) => total + day.potentialSlots, 0);
+  const totalOpen = daily.reduce((total, day) => total + day.slotsAvailable, 0);
+  const capacityFilled = totalCapacity ? (totalCapacity - totalOpen) / totalCapacity : 0;
+  const checkedIn = golf.today.playersCheckedIn;
+  const noShows = golf.today.playerNoShows;
   const cards = [
-    ["Member rounds", golf.member.rounds, `${percent(memberShare)} of classified play`, Users],
-    ["Non-member rounds", golf.nonMember.rounds, `${percent(1 - memberShare)} of classified play`, Flag],
-    ["Checked in", golf.today.playersCheckedIn, `${golf.today.playerNoShows} no-shows today`, ClipboardList],
-    ["Today’s occupancy", percent(golf.today.occupancy), `${golf.today.slotsAvailable} positions remaining`, CircleGauge]
+    ["Total rounds", allRounds, `${golf.unclassifiedRounds} not classified by price class`, Users],
+    ["Tee-sheet revenue", money(totalRevenue), "All golf revenue recorded in the selected period", ReceiptText],
+    ["Green-fee revenue", money(totalGreenFees), allRounds ? `${money(totalGreenFees / allRounds)} per round` : "No rounds recorded", CircleGauge],
+    ["Capacity filled", percent(capacityFilled), `${totalOpen} open positions across the period`, ChartNoAxesCombined]
   ] as const;
   return <>
     <div className="period-bar"><span>{golf.period.label}</span><strong>{formatRange(golf.period)}</strong><small>Classified from ForeUp price classes: {golf.priceClasses.join(" · ") || "none"}</small></div>
     <div className="live-grid">{cards.map(([label, value, note, Icon]) => <article className="live-card" key={label}><Icon size={18} /><span>{label}</span><strong>{value}</strong><small>{note}</small></article>)}</div>
+    <div className="operations-grid">
+      <article className="detail-card operating-pulse"><div><div className="eyebrow">Operating pulse</div><h3>Attendance and booking quality</h3><p>Current-day attendance is kept separate from period totals so it cannot be mistaken for historical performance.</p></div><dl className="detail-list"><div><dt>Source bookings</dt><dd>{golf.sourceBookings}</dd></div><div><dt>Checked in today</dt><dd>{checkedIn}</dd></div><div><dt>No-shows today</dt><dd>{noShows}</dd></div><div><dt>Cart attachment</dt><dd>{allRounds ? percent((golf.member.carts + golf.nonMember.carts) / allRounds) : "—"}</dd></div></dl></article>
+      <DailyPerformance daily={daily} />
+    </div>
     <div className="segment-grid">
       <SegmentSummary label="Member" segment={golf.member} share={memberShare} />
       <SegmentSummary label="Non-member" segment={golf.nonMember} share={1 - memberShare} />
@@ -105,15 +140,31 @@ function SegmentPanel({ label, segment, totalRounds, period, variant }: { label:
   const cards = [
     { label: "Tee times", value: segment.bookings, note: "Reservations containing this segment", Icon: CalendarDays },
     { label: "Carts", value: segment.carts, note: "Carts allocated proportionally", Icon: CircleGauge },
-    { label: "Green-fee revenue", value: money(segment.greenFeeRevenue), note: "Green Fees only", Icon: ReceiptText },
-    { label: "Share of play", value: percent(share), note: "Classified member mix", Icon: Users }
+    { label: "Green fee / round", value: segment.rounds ? money(segment.greenFeeRevenue / segment.rounds) : "—", note: `${money(segment.greenFeeRevenue)} in recorded green fees`, Icon: ReceiptText },
+    { label: "Cart attachment", value: segment.rounds ? percent(segment.carts / segment.rounds) : "—", note: `${percent(share)} of classified play`, Icon: Users }
   ];
-  return <><div className={`segment-hero ${variant}`}><span>{period}</span><strong>{segment.rounds}</strong><p>{label.toLowerCase()} rounds · {percent(share)} of classified play</p></div><div className="live-grid">{cards.map(({ label: cardLabel, value, note, Icon }) => <article className="live-card" key={cardLabel}><Icon size={18} /><span>{cardLabel}</span><strong>{value}</strong><small>{note}</small></article>)}</div></>;
+  return <><div className={`segment-hero ${variant}`}><span>{period}</span><strong>{segment.rounds}</strong><p>{label.toLowerCase()} rounds · {percent(share)} of classified play</p></div><div className="live-grid">{cards.map(({ label: cardLabel, value, note, Icon }) => <article className="live-card" key={cardLabel}><Icon size={18} /><span>{cardLabel}</span><strong>{value}</strong><small>{note}</small></article>)}</div><article className="detail-card metric-explainer"><div><div className="eyebrow">Booking quality</div><h3>Group size and spend</h3><p>Derived only from the selected, fully synced reporting period.</p></div><dl className="detail-list"><div><dt>Average group size</dt><dd>{segment.bookings ? number(segment.rounds / segment.bookings, 1) : "—"}</dd></div><div><dt>Green fees / booking</dt><dd>{segment.bookings ? money(segment.greenFeeRevenue / segment.bookings) : "—"}</dd></div><div><dt>Classified play share</dt><dd>{percent(share)}</dd></div><div><dt>Unclassified adjustment</dt><dd>Excluded</dd></div></dl></article></>;
 }
 
 function TeeSheetPanel({ golf }: { golf: GolfSnapshot }) {
   const stats = golf.today;
-  return <article className="detail-card"><div><div className="eyebrow">Live today</div><h3>Today’s tee sheet</h3><p>ForeUp snapshot for {formatDate(stats.date)}.</p></div><dl className="detail-list"><div><dt>Bookings</dt><dd>{stats.bookings}</dd></div><div><dt>Open positions</dt><dd>{stats.slotsAvailable}</dd></div><div><dt>Potential positions</dt><dd>{stats.potentialSlots}</dd></div><div><dt>Golf revenue</dt><dd>{money(stats.revenue)}</dd></div></dl></article>;
+  const todayInPeriod = golf.period.start <= stats.date && stats.date <= golf.period.end;
+  if (!todayInPeriod) return <article className="detail-card"><div><div className="eyebrow">Current day</div><h3>Today’s tee sheet</h3><p>Today is outside the selected range; choose a range including today for a tee-sheet snapshot.</p></div></article>;
+  const filled = Math.max(0, stats.potentialSlots - stats.slotsAvailable);
+  const cards = [
+    { label: "Bookings", value: stats.bookings, note: `${number(stats.bookings ? filled / stats.bookings : 0, 1)} players per booking`, Icon: CalendarDays },
+    { label: "Slot utilization", value: stats.potentialSlots ? percent(filled / stats.potentialSlots) : "—", note: `${stats.slotsAvailable} positions still open`, Icon: CircleGauge },
+    { label: "Revenue / booking", value: stats.bookings ? money(stats.revenue / stats.bookings) : "—", note: `${money(stats.revenue)} golf revenue today`, Icon: ReceiptText },
+    { label: "No-shows", value: stats.playerNoShows, note: `${stats.playersCheckedIn} players checked in`, Icon: ClipboardList }
+  ];
+  return <><div className="period-bar"><span>Current day</span><strong>{formatDate(stats.date)}</strong><small>Reporting database snapshot; attendance values are not projected to the full period.</small></div><div className="live-grid">{cards.map(({ label, value, note, Icon }) => <MetricCard key={label} label={label} value={value} note={note} Icon={Icon} />)}</div></>;
+}
+
+function DailyPerformance({ daily }: { daily: NonNullable<GolfSnapshot["daily"]> }) {
+  const recent = daily.slice(-14);
+  const maxRounds = Math.max(1, ...recent.map((day) => day.rounds));
+  if (!recent.length) return null;
+  return <article className="daily-performance"><div className="daily-performance-heading"><div><div className="eyebrow">Recent pace</div><h3>Daily rounds</h3></div><span>Last {recent.length} days in range</span></div><div className="daily-bars" aria-label="Daily rounds performance">{recent.map((day) => <div className="daily-bar" key={day.date} title={`${formatDate(day.date)}: ${day.rounds} rounds, ${money(day.greenFeeRevenue)} green fees`}><i style={{ height: `${Math.max(5, Math.round(day.rounds / maxRounds * 100))}%` }} /><span>{formatShortDate(day.date)}</span></div>)}</div><p>Bars show rounds; hover or press a bar for the date and green-fee revenue.</p></article>;
 }
 
 function SegmentSummary({ label, segment, share }: { label: string; segment: Segment; share: number }) {
@@ -122,6 +173,93 @@ function SegmentSummary({ label, segment, share }: { label: string; segment: Seg
 
 function MembersPanel() { return <MemberWorkspace />; }
 
+function AutomationsPanel({ tab }: { tab: string }) {
+  const active = workflowLibrary.filter((workflow) => workflow.status === "active");
+  const scheduled = active.filter((workflow) => workflow.cronExpression);
+  const reviewRequired = active.filter((workflow) => !evaluateWorkflowSafety(workflow).safeForAutopilot);
+  const aiEnabled = active.filter((workflow) => workflow.aiAllowed);
+  const label = tab === "Rules" ? "Rules" : tab === "Schedule" ? "Schedule" : "History";
+  if (tab === "History") return <section className="empty-area"><CalendarDays size={24} /><strong>Execution history is not retained yet</strong><span>Configured-rule health is shown here today. Delivery, hold, and failure events will appear only after durable run logging is added—no invented performance metrics.</span></section>;
+  return <><div className="period-bar"><span>{label}</span><strong>Configured operating controls</strong><small>These are live rule definitions, not claimed delivery outcomes.</small></div><div className="live-grid"><MetricCard label="Active workflows" value={active.length} note="Configured operating workflows" Icon={Flag} /><MetricCard label="Scheduled jobs" value={scheduled.length} note="Rules with a defined cron schedule" Icon={CalendarDays} /><MetricCard label="Approval gates" value={reviewRequired.length} note="Workflows requiring staff review" Icon={ClipboardList} /><MetricCard label="AI-enabled jobs" value={aiEnabled.length} note="Scheduled workflows default to deterministic rules" Icon={MessageSquareText} /></div><article className="detail-card daily-ledger"><div><div className="eyebrow">Operational coverage</div><h3>Configured workflow controls</h3><p>Each workflow stays visible with its trigger, safety posture, and handoff expectation.</p></div><dl className="detail-list">{active.map((workflow) => { const safety = evaluateWorkflowSafety(workflow); return <div key={workflow.id}><dt>{workflow.name} · {workflow.cronExpression ?? workflow.trigger}</dt><dd>{safety.safeForAutopilot ? "Autopilot eligible" : "Staff review"}</dd></div>; })}</dl></article></>;
+}
+
+function PlatformPanel({ golf, commerce, error, tab }: { golf: GolfSnapshot | null; commerce: CommerceReport | null; error: string | null; tab: string }) {
+  const ready = Boolean(golf || commerce) && !error;
+  const period = golf?.period ?? commerce?.period;
+  if (tab === "Access") return <section className="empty-area"><Users size={24} /><strong>Access management</strong><span>Staff invitations and role permissions are managed from the account menu. Reporting access remains staff-only.</span></section>;
+  return <><div className="period-bar"><span>{tab === "Data sync" ? "Data sync" : "Connections"}</span><strong>{period ? formatRange(period) : "Current reporting status"}</strong><small>Coverage is checked before a report is displayed.</small></div><div className="live-grid"><MetricCard label="Reporting database" value={ready ? "Ready" : "Needs attention"} note={ready ? "Database-backed report returned a complete range" : error ?? "No complete reporting range is available"} Icon={CircleGauge} /><MetricCard label="Golf coverage" value={golf ? "Complete" : "Unavailable"} note={golf ? `${golf.period.label} has every expected daily fact` : "Run the protected reporting sync for this range"} Icon={Flag} /><MetricCard label="POS coverage" value={commerce ? "Complete" : "Unavailable"} note={commerce ? `${commerce.period.label} includes every outlet/day row` : "Outlet backfill is required after the F&B model update"} Icon={ReceiptText} /><MetricCard label="Data source" value="Postgres" note="Interactive dashboards never query ForeUp directly" Icon={Cloud} /></div><article className="detail-card metric-explainer"><div><div className="eyebrow">Integrity guardrail</div><h3>What “complete” means</h3><p>Golf requires one durable row per date. POS requires explicit zero or sales rows for Pro Shop, Snack Shack, Bar, and F&B awaiting outlet mapping—so gaps never masquerade as slow days.</p></div><dl className="detail-list"><div><dt>Selected period</dt><dd>{period ? formatRange(period) : "—"}</dd></div><div><dt>Golf feed</dt><dd>{golf ? "Verified" : "Awaiting sync"}</dd></div><div><dt>POS feed</dt><dd>{commerce ? "Verified" : "Awaiting outlet backfill"}</dd></div><div><dt>Live ForeUp fallback</dt><dd>Disabled</dd></div></dl></article></>;
+}
+
+function CommercePanel({ area, commerce, error, tab }: { area: "pro-shop" | "clubhouse"; commerce: CommerceReport | null; error: string | null; tab: string }) {
+  const department = area === "pro-shop" ? "proShop" : "clubhouse";
+  const label = area === "pro-shop" ? "Pro shop" : "Clubhouse";
+  if (error) return <section className="empty-area"><ReceiptText size={24} /><strong>{label} reporting needs attention</strong><span>{error}</span></section>;
+  if (!commerce) return <section className="empty-area"><ReceiptText size={24} /><strong>{label} feed is awaiting its first sync</strong><span>No sales figures are shown until every date in the selected range has been imported.</span></section>;
+  if (area === "pro-shop" && tab === "Inventory") return <section className="empty-area"><ReceiptText size={24} /><strong>Inventory catalog is next</strong><span>ForeUp’s Items endpoint is mapped, but on-hand quantity and reorder level have not been imported yet. This remains explicit until the catalog sync is live.</span></section>;
+  if (area === "clubhouse" && tab === "Events") return <section className="empty-area"><CalendarDays size={24} /><strong>Events feed is not connected</strong><span>POS revenue is live here. Event bookings and covers need their own verified ForeUp source before they appear.</span></section>;
+  if (area === "clubhouse") return <FoodAndBeveragePanel commerce={commerce} tab={tab} />;
+  const totals = commerce[department];
+  const daily = commerce.daily.filter((day) => area === "pro-shop" ? day.department === "pro_shop" : day.department !== "pro_shop").reduce<Array<{ date: string; department: "pro_shop" | "snack_shack" | "bar" | "fnb_unassigned"; transactions: number; unitsSold: number; revenue: number }>>((days, day) => {
+    const existing = days.find((candidate) => candidate.date === day.date);
+    if (existing) { existing.transactions += day.transactions; existing.unitsSold += day.unitsSold; existing.revenue += day.revenue; }
+    else days.push({ ...day, department: area === "pro-shop" ? "pro_shop" : "fnb_unassigned" });
+    return days;
+  }, []);
+  const sellingDays = daily.filter((day) => day.transactions > 0).length;
+  const averageTicket = totals.transactions ? totals.revenue / totals.transactions : 0;
+  const sectionLabel = tab === "Sales" ? "Sales" : tab === "Food & beverage" ? "Food & beverage" : label;
+  const bestDay = daily.reduce<typeof daily[number] | null>((best, day) => !best || day.revenue > best.revenue ? day : best, null);
+  return <><div className="period-bar"><span>{sectionLabel}</span><strong>{formatRange(commerce.period)}</strong><small>Synced from the full ForeUp POS sales ledger, including standalone counter sales.</small></div><div className="live-grid"><MetricCard label="Revenue" value={money(totals.revenue)} note="Recorded sales in selected period" Icon={ReceiptText} /><MetricCard label="Transactions" value={totals.transactions} note="Completed POS sales with this department" Icon={ClipboardList} /><MetricCard label="Units / transaction" value={totals.transactions ? number(totals.unitsSold / totals.transactions, 1) : "—"} note={`${totals.unitsSold} line-item units sold`} Icon={CalendarDays} /><MetricCard label="Average ticket" value={totals.transactions ? money(averageTicket) : "—"} note={`${sellingDays} selling day${sellingDays === 1 ? "" : "s"} in range`} Icon={ChartNoAxesCombined} /></div><div className="operations-grid"><article className="detail-card metric-explainer"><div><div className="eyebrow">Sales quality</div><h3>Volume and peak day</h3><p>These are ledger-based measures, not inventory or event estimates.</p></div><dl className="detail-list"><div><dt>Revenue / unit</dt><dd>{totals.unitsSold ? money(totals.revenue / totals.unitsSold) : "—"}</dd></div><div><dt>Revenue / selling day</dt><dd>{sellingDays ? money(totals.revenue / sellingDays) : "—"}</dd></div><div><dt>Best sales day</dt><dd>{bestDay?.revenue ? formatShortDate(bestDay.date) : "—"}</dd></div><div><dt>Best-day revenue</dt><dd>{bestDay ? money(bestDay.revenue) : "—"}</dd></div></dl></article><CommerceTrend daily={daily} label={sectionLabel} /></div>{tab === "Sales" ? <DailyLedger daily={daily} label={sectionLabel} /> : null}</>;
+}
+
+function FoodAndBeveragePanel({ commerce, tab }: { commerce: CommerceReport; tab: string }) {
+  const [outlet, setOutlet] = useState<"all" | "snack_shack" | "bar" | "fnb_unassigned">("all");
+  const outletName = outlet === "all" ? "All F&B" : outlet === "snack_shack" ? "Snack Shack" : outlet === "bar" ? "Bar" : "Needs Mapping";
+  const outletMetric = outlet === "all" ? commerce.clubhouse : outlet === "snack_shack" ? commerce.snackShack : outlet === "bar" ? commerce.bar : commerce.fnbUnassigned;
+  const daily = commerce.daily.filter((day) => outlet === "all" ? day.department !== "pro_shop" : day.department === outlet).reduce<Array<{ date: string; transactions: number; unitsSold: number }>>((days, day) => {
+    const existing = days.find((candidate) => candidate.date === day.date);
+    if (existing) { existing.transactions += day.transactions; existing.unitsSold += day.unitsSold; }
+    else days.push({ date: day.date, transactions: day.transactions, unitsSold: day.unitsSold });
+    return days;
+  }, []);
+  const totalUnits = outletMetric.unitsSold;
+  const mappedUnits = commerce.snackShack.unitsSold + commerce.bar.unitsSold;
+  const activeDays = daily.filter((day) => day.transactions > 0).length;
+  const busiestDay = daily.reduce<typeof daily[number] | null>((best, day) => !best || day.unitsSold > best.unitsSold ? day : best, null);
+  const sectionLabel = tab === "Food & beverage" ? "Food & beverage" : "Clubhouse operations";
+  return <><div className="period-bar"><span>{sectionLabel}</span><strong>{formatRange(commerce.period)}</strong><small>Operational measures from fully synced ForeUp POS line items.</small></div><nav className="operations-tabs" aria-label="Food and beverage outlet"><button aria-pressed={outlet === "all"} className={outlet === "all" ? "active" : ""} onClick={() => setOutlet("all")} type="button">All F&B</button><button aria-pressed={outlet === "snack_shack"} className={outlet === "snack_shack" ? "active" : ""} onClick={() => setOutlet("snack_shack")} type="button">Snack Shack</button><button aria-pressed={outlet === "bar"} className={outlet === "bar" ? "active" : ""} onClick={() => setOutlet("bar")} type="button">Bar</button><button aria-pressed={outlet === "fnb_unassigned"} className={outlet === "fnb_unassigned" ? "active" : ""} onClick={() => setOutlet("fnb_unassigned")} type="button">Needs Mapping</button></nav><div className="live-grid"><MetricCard label="Outlet orders" value={outletMetric.transactions} note="Outlet-attributed orders; a split receipt can touch two outlets" Icon={ClipboardList} /><MetricCard label="Units served" value={totalUnits} note={`${outletName} food and drink line-item quantity`} Icon={CalendarDays} /><MetricCard label="Active days" value={activeDays} note={`${daily.length} fully covered days in range`} Icon={ChartNoAxesCombined} /><MetricCard label={outlet === "all" ? "Mapping coverage" : "Outlet unit mix"} value={outlet === "all" ? totalUnits ? percent(mappedUnits / totalUnits) : "—" : commerce.clubhouse.unitsSold ? percent(totalUnits / commerce.clubhouse.unitsSold) : "—"} note={outlet === "all" ? `${commerce.fnbUnassigned.unitsSold} F&B units need outlet mapping` : `${outletName} share of all F&B units`} Icon={CircleGauge} /></div>{outlet === "all" && <OutletDistribution snackShack={commerce.snackShack} bar={commerce.bar} unassigned={commerce.fnbUnassigned} />}<div className="operations-grid"><article className="detail-card metric-explainer"><div><div className="eyebrow">Service pace</div><h3>{outletName} operating pulse</h3><p>This is an operating view: order volume, unit movement, and mapping quality—not a financial statement.</p></div><dl className="detail-list"><div><dt>Units / outlet order</dt><dd>{outletMetric.transactions ? number(totalUnits / outletMetric.transactions, 1) : "—"}</dd></div><div><dt>Snack Shack unit share</dt><dd>{commerce.clubhouse.unitsSold ? percent(commerce.snackShack.unitsSold / commerce.clubhouse.unitsSold) : "—"}</dd></div><div><dt>Bar unit share</dt><dd>{commerce.clubhouse.unitsSold ? percent(commerce.bar.unitsSold / commerce.clubhouse.unitsSold) : "—"}</dd></div><div><dt>Busiest unit day</dt><dd>{busiestDay?.unitsSold ? formatShortDate(busiestDay.date) : "—"}</dd></div></dl></article><FoodAndBeverageTrend daily={daily} /></div><FoodAndBeverageLedger daily={daily} /><section className="empty-area"><ReceiptText size={22} /><strong>Trending items are being added to the durable POS import</strong><span>The outlet toggle uses verified daily metrics now. Item-level trends will appear only after the import retains each menu item and its outlet, so the list is real rather than inferred.</span></section></>;
+}
+
+function OutletDistribution({ snackShack, bar, unassigned }: { snackShack: CommerceReport["snackShack"]; bar: CommerceReport["bar"]; unassigned: CommerceReport["fnbUnassigned"] }) {
+  const total = snackShack.unitsSold + bar.unitsSold + unassigned.unitsSold;
+  const outlets = [{ label: "Snack Shack", value: snackShack }, { label: "Bar", value: bar }, { label: "Needs mapping", value: unassigned }];
+  return <article className="detail-card outlet-distribution"><div><div className="eyebrow">Food & beverage distribution</div><h3>Where orders are landing</h3><p>Outlet labels use the ForeUp department/location on each line item. Ambiguous F&B is held for mapping, never guessed.</p></div><dl className="detail-list">{outlets.map(({ label, value }) => <div key={label}><dt>{label}</dt><dd>{value.unitsSold} units · {value.transactions} orders · {total ? percent(value.unitsSold / total) : "—"}</dd></div>)}</dl></article>;
+}
+
+function FoodAndBeverageTrend({ daily }: { daily: Array<{ date: string; transactions: number; unitsSold: number }> }) {
+  const recent = daily.slice(-14), maxUnits = Math.max(1, ...recent.map((day) => day.unitsSold));
+  return <article className="daily-performance commerce-performance"><div className="daily-performance-heading"><div><div className="eyebrow">Recent pace</div><h3>Daily F&B units</h3></div><span>Last {recent.length} days in range</span></div><div className="daily-bars" aria-label="Daily food and beverage units">{recent.map((day) => <div className="daily-bar" key={day.date} title={`${formatDate(day.date)}: ${day.unitsSold} units, ${day.transactions} outlet orders`}><i style={{ height: `${Math.max(5, Math.round(day.unitsSold / maxUnits * 100))}%` }} /><span>{formatShortDate(day.date)}</span></div>)}</div><p>Bars show units served; a zero is trustworthy only because every outlet/day row is required.</p></article>;
+}
+
+function FoodAndBeverageLedger({ daily }: { daily: Array<{ date: string; transactions: number; unitsSold: number }> }) {
+  const recent = daily.slice(-7).reverse();
+  if (!recent.length) return null;
+  return <article className="detail-card daily-ledger"><div><div className="eyebrow">Recent service ledger</div><h3>F&B last 7 days</h3><p>Operational volume from the completed POS import.</p></div><dl className="detail-list">{recent.map((day) => <div key={day.date}><dt>{formatShortDate(day.date)} · {day.transactions} outlet orders</dt><dd>{day.unitsSold} units</dd></div>)}</dl></article>;
+}
+
+function MetricCard({ label, value, note, Icon }: { label: string; value: string | number; note: string; Icon: typeof ReceiptText }) { return <article className="live-card"><Icon size={18} /><span>{label}</span><strong>{value}</strong><small>{note}</small></article>; }
+
+function CommerceTrend({ daily, label }: { daily: CommerceReport["daily"]; label: string }) {
+  const recent = daily.slice(-14), maxRevenue = Math.max(1, ...recent.map((day) => day.revenue));
+  return <article className="daily-performance commerce-performance"><div className="daily-performance-heading"><div><div className="eyebrow">Recent pace</div><h3>{label} daily revenue</h3></div><span>Last {recent.length} days in range</span></div><div className="daily-bars" aria-label={`${label} daily revenue`}>{recent.map((day) => <div className="daily-bar" key={day.date} title={`${formatDate(day.date)}: ${money(day.revenue)}, ${day.transactions} transactions`}><i style={{ height: `${Math.max(5, Math.round(day.revenue / maxRevenue * 100))}%` }} /><span>{formatShortDate(day.date)}</span></div>)}</div><p>Bars show recorded revenue. A zero means the feed imported no attached sales for that department.</p></article>;
+}
+
+function DailyLedger({ daily, label }: { daily: CommerceReport["daily"]; label: string }) {
+  const recent = daily.slice(-7).reverse();
+  if (!recent.length) return null;
+  return <article className="detail-card daily-ledger"><div><div className="eyebrow">Recent ledger</div><h3>{label} last 7 days</h3><p>Daily totals from the completed POS import.</p></div><dl className="detail-list">{recent.map((day) => <div key={day.date}><dt>{formatShortDate(day.date)} · {day.transactions} txns</dt><dd>{money(day.revenue)}</dd></div>)}</dl></article>;
+}
+
 function EmptyArea({ area, tab }: { area: OperationsArea; tab: string }) {
   const Icon = area === "pro-shop" ? ReceiptText : area === "platform" ? Cloud : Flag;
   const copy: Record<OperationsArea, string> = { golf: "", "pro-shop": "Sales and inventory are not loaded yet. This stays blank until the live endpoint is mapped.", clubhouse: "Clubhouse sales and menu data are not loaded yet. No sample transactions are being shown.", members: "Member syncing has not been enabled. Once approved, this will use live ForeUp records only.", automations: "No production automation is active. Rules and schedules will appear only after approval.", platform: "ForeUp is connected. Additional services will appear as they are configured." };
@@ -129,7 +267,10 @@ function EmptyArea({ area, tab }: { area: OperationsArea; tab: string }) {
 }
 
 function percent(value: number) { return `${Math.round(Math.max(0, value) * 100)}%`; }
+function number(value: number, maximumFractionDigits = 0) { return new Intl.NumberFormat("en-US", { maximumFractionDigits }).format(value); }
 function money(value: number) { return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value); }
 function formatDate(value: string) { return new Date(`${value}T12:00:00`).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }); }
+function formatShortDate(value: string) { return new Date(`${value}T12:00:00`).toLocaleDateString("en-US", { month: "numeric", day: "numeric" }); }
 function formatRange(period: GolfSnapshot["period"]) { return `${formatDate(period.start)} – ${formatDate(period.end)}`; }
 function apiBasePath() { return typeof window !== "undefined" && window.location.pathname.startsWith("/fairwayai") ? "/fairwayai" : ""; }
+function isoToday() { return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()); }

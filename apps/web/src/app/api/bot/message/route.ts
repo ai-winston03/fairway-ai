@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createBotReply } from "@/lib/mock-data";
+import { staffGuard } from "@/lib/staff-access";
 
 const messageSchema = z.object({
   from: z.string().min(3),
@@ -9,6 +10,8 @@ const messageSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
+  const access = await staffGuard(request, "member:message");
+  if (access.error) return access.error;
   const payload = messageSchema.parse(await request.json());
 
   return NextResponse.json({

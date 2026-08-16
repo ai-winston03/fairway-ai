@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { foreup } from "@/lib/foreup-adapter";
+import { staffGuard } from "@/lib/staff-access";
 
 export async function POST(request: NextRequest) {
+  const access = await staffGuard(request, "settings:manage");
+  if (access.error) return access.error;
   const body = await request.json();
 
   const booking = await foreup.createBooking({

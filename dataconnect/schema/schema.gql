@@ -27,6 +27,20 @@ type DailyGolfMetric @table(key: ["courseId", "teeSheetId", "date"]) {
   syncedAt: Timestamp! @default(expr: "request.time")
 }
 
+# One durable daily fact per operating department.  The importer writes both
+# departments every day (including zero-sale days), which makes gaps visible
+# instead of treating missing data as zero.
+type DailyCommerceMetric @table(key: ["courseId", "teeSheetId", "date", "department"]) {
+  courseId: String!
+  teeSheetId: String!
+  date: Date!
+  department: String! # pro_shop | snack_shack | bar | fnb_unassigned
+  transactions: Int!
+  unitsSold: Int!
+  revenue: Float!
+  syncedAt: Timestamp! @default(expr: "request.time")
+}
+
 # Keeps the scheduled import observable without putting operational state in
 # the dashboard's reporting query path.
 type ForeupSyncRun @table {

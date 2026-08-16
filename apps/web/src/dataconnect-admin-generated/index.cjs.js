@@ -14,6 +14,13 @@ function upsertDailyGolfMetric(dcOrVarsOrOptions, varsOrOptions, options) {
 }
 exports.upsertDailyGolfMetric = upsertDailyGolfMetric;
 
+function upsertDailyCommerceMetric(dcOrVarsOrOptions, varsOrOptions, options) {
+  const { dc: dcInstance, vars: inputVars, options: inputOpts} = validateAdminArgs(connectorConfig, dcOrVarsOrOptions, varsOrOptions, options, true, true);
+  dcInstance.useGen(true);
+  return dcInstance.executeMutation('UpsertDailyCommerceMetric', inputVars, inputOpts);
+}
+exports.upsertDailyCommerceMetric = upsertDailyCommerceMetric;
+
 function startForeupSyncRun(dcOrVarsOrOptions, varsOrOptions, options) {
   const { dc: dcInstance, vars: inputVars, options: inputOpts} = validateAdminArgs(connectorConfig, dcOrVarsOrOptions, varsOrOptions, options, true, true);
   dcInstance.useGen(true);
@@ -27,4 +34,11 @@ function listDailyGolfMetrics(dcOrVarsOrOptions, varsOrOptions, options) {
   return dcInstance.executeQuery('ListDailyGolfMetrics', inputVars, inputOpts);
 }
 exports.listDailyGolfMetrics = listDailyGolfMetrics;
+
+function listDailyCommerceMetrics(dcOrVarsOrOptions, varsOrOptions, options) {
+  const { dc: dcInstance, vars: inputVars, options: inputOpts} = validateAdminArgs(connectorConfig, dcOrVarsOrOptions, varsOrOptions, options, true, true);
+  dcInstance.useGen(true);
+  return dcInstance.executeQuery('ListDailyCommerceMetrics', inputVars, inputOpts);
+}
+exports.listDailyCommerceMetrics = listDailyCommerceMetrics;
 

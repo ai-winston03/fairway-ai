@@ -4,7 +4,7 @@ export type IntegrationStatus = "connected" | "ready" | "not_connected" | "needs
 
 export type IntegrationAccount = {
   id: string;
-  provider: "foreup" | "gusto" | "sms" | "vercel" | "supabase" | "worker";
+  provider: "firebase" | "foreup" | "gusto" | "sms" | "vercel" | "worker";
   label: string;
   status: IntegrationStatus;
   owner: string;
@@ -92,19 +92,21 @@ export const integrationAccounts: IntegrationAccount[] = [
     id: "int_sms",
     provider: "sms",
     label: "SMS/VoIP",
-    status: process.env.SMS_PROVIDER ? "ready" : "not_connected",
-    owner: "Provider webhook",
-    nextAction: "Choose GoTo, AT&T, Twilio, Bandwidth, or hosted SMS before production sends.",
-    health: "Inbound webhook, opt-out checks, staff pause gate"
+    status: process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_FROM_NUMBER ? "connected" : "not_connected",
+    owner: "Twilio webhook",
+    nextAction: process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_FROM_NUMBER
+      ? "Point the Twilio number webhook at /api/sms/inbound."
+      : "Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_FROM_NUMBER. Threads and drafts work now; sends queue until then.",
+    health: "Inbox store, inbound webhook, staff pause gate, queued send"
   },
   {
-    id: "int_supabase",
-    provider: "supabase",
-    label: "Supabase Postgres",
-    status: process.env.DATABASE_URL ? "ready" : "not_connected",
-    owner: "Vercel app",
-    nextAction: "Set DATABASE_URL in Vercel and worker environment.",
-    health: "Prisma schema prepared for Postgres"
+    id: "int_firebase_postgres",
+    provider: "firebase",
+    label: "Firebase Data Connect Postgres",
+    status: "ready",
+    owner: "Firebase App Hosting",
+    nextAction: "Schedule the protected ForeUp daily reporting sync.",
+    health: "Managed Cloud SQL Postgres; dashboard reports read durable daily facts"
   },
   {
     id: "int_worker",

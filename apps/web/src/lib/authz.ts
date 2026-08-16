@@ -120,11 +120,36 @@ export const demoAccessProfiles: TeamAccessProfile[] = [
 ];
 
 export function can(profile: TeamAccessProfile, permission: Permission) {
-  return profile.permissions.includes(permission) || profile.permissions.includes("kpi:view:all");
+  if (profile.permissions.includes(permission)) return true;
+  return permission.startsWith("kpi:view:") && profile.permissions.includes("kpi:view:all");
 }
 
 export function visibleKpiGroups(profile: TeamAccessProfile) {
   if (profile.permissions.includes("kpi:view:all")) return kpiGroupCatalog;
 
   return kpiGroupCatalog.filter((group) => profile.kpiGroups.includes(group.id));
+}
+
+export function canManageUsers(profile: TeamAccessProfile) {
+  return can(profile, "users:manage");
+}
+
+export function canMessageAnyMember(profile: TeamAccessProfile) {
+  return profile.role === "admin" || profile.role === "owner";
+}
+
+export function canClaimMemberThread(profile: TeamAccessProfile) {
+  return canMessageAnyMember(profile) || profile.role === "department-manager";
+}
+
+export function canViewMemberThread(profile: TeamAccessProfile, assignedStaffUids: string[] = [], staffUid?: string) {
+  if (!can(profile, "member:lookup")) return false;
+  if (canClaimMemberThread(profile)) return true;
+  return Boolean(staffUid && assignedStaffUids.includes(staffUid));
+}
+
+export function canMessageMember(profile: TeamAccessProfile, assignedStaffUids: string[] = [], staffUid?: string) {
+  if (!can(profile, "member:message")) return false;
+  if (canMessageAnyMember(profile)) return true;
+  return Boolean(staffUid && assignedStaffUids.includes(staffUid));
 }

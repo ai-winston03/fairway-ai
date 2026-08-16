@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import { foreup } from "@/lib/foreup-adapter";
 import { cachedForeup } from "@/lib/foreup-cache";
+import { can } from "@/lib/authz";
 import { verifiedStaff } from "@/lib/staff-access";
 
 export async function GET(request: Request) {
-  if (!await verifiedStaff(request)) return NextResponse.json({ connected: false, error: "Sign in is required." }, { status: 401 });
+  const staff = await verifiedStaff(request);
+  if (!staff) return NextResponse.json({ connected: false, error: "Sign in is required." }, { status: 401 });
+  if (!can(staff, "member:lookup")) return NextResponse.json({ connected: false, error: "Member lookup is not allowed for this role." }, { status: 403 });
   const courseId = process.env.FOREUP_COURSE_ID;
   if (!courseId) return NextResponse.json({ connected: false, error: "ForeUp course configuration is missing." }, { status: 503 });
   try {

@@ -2,7 +2,7 @@
 
 import { isSignInWithEmailLink, signInWithEmailLink } from "firebase/auth";
 import { Mail, ShieldCheck } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { firebaseAuth, firebaseEnabled } from "@/lib/firebase-client";
 
 type InternalLoginProps = { error?: string | null };
@@ -12,6 +12,38 @@ export function InternalLogin({ error }: InternalLoginProps) {
   const [message, setMessage] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [completingLink, setCompletingLink] = useState(false);
+  const completionStarted = useRef(false);
+
+  function handleCompletionError(signInError: unknown) {
+    const code = typeof signInError === "object" && signInError !== null && "code" in signInError
+      ? String(signInError.code)
+      : "";
+    if (code !== "auth/invalid-action-code" && code !== "auth/expired-action-code") {
+      setMessage(signInError instanceof Error ? signInError.message : "That sign-in link could not be completed.");
+      return;
+    }
+
+    // Firebase action links are one-time use. Do not retry a spent link.
+    window.localStorage.removeItem("fairway_magic_link_email");
+    window.history.replaceState({}, document.title, window.location.pathname);
+    setCompletingLink(false);
+    setMessage("That sign-in link has expired or was already used. Request a fresh link below.");
+  }
+
+  async function completeSignIn(signInEmail: string) {
+    if (!firebaseAuth || completionStarted.current) return;
+    completionStarted.current = true;
+    setWorking(true);
+    try {
+      await signInWithEmailLink(firebaseAuth, signInEmail, window.location.href);
+      window.localStorage.removeItem("fairway_magic_link_email");
+    } catch (signInError) {
+      handleCompletionError(signInError);
+    } finally {
+      completionStarted.current = false;
+      setWorking(false);
+    }
+  }
 
   useEffect(() => {
     if (!firebaseAuth || !isSignInWithEmailLink(firebaseAuth, window.location.href)) return;
@@ -22,11 +54,7 @@ export function InternalLogin({ error }: InternalLoginProps) {
       setMessage("Enter the email address that received this link to finish signing in.");
       return;
     }
-    setWorking(true);
-    void signInWithEmailLink(firebaseAuth, savedEmail, window.location.href)
-      .then(() => window.localStorage.removeItem("fairway_magic_link_email"))
-      .catch((signInError) => setMessage(signInError instanceof Error ? signInError.message : "That sign-in link could not be completed."))
-      .finally(() => setWorking(false));
+    void completeSignIn(savedEmail);
   }, []);
 
   async function signIn() {
@@ -36,8 +64,7 @@ export function InternalLogin({ error }: InternalLoginProps) {
     setWorking(true); setMessage(null);
     try {
       if (completingLink) {
-        await signInWithEmailLink(firebaseAuth, normalizedEmail, window.location.href);
-        window.localStorage.removeItem("fairway_magic_link_email");
+        await completeSignIn(normalizedEmail);
         return;
       }
       const response = await fetch("/api/auth/magic-link", {
@@ -48,9 +75,9 @@ export function InternalLogin({ error }: InternalLoginProps) {
       const payload = await response.json() as { error?: string };
       if (!response.ok) throw new Error(payload.error ?? "Sign-in email could not be sent.");
       window.localStorage.setItem("fairway_magic_link_email", normalizedEmail);
-      setMessage("A secure sign-in link is on its way. Open it in this browser to continue.");
+      setMessage("Your sign-in request was accepted. Check your inbox for the secure link, then open it in this browser to continue.");
     } catch (signInError) {
-      setMessage(signInError instanceof Error ? signInError.message : "Sign-in could not be completed.");
+      handleCompletionError(signInError);
     } finally { setWorking(false); }
   }
 

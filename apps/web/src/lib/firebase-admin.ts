@@ -1,6 +1,8 @@
 import { applicationDefault, cert, getApps, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
+import { getDataConnect } from "firebase-admin/data-connect";
 import { getFirestore } from "firebase-admin/firestore";
+import { connectorConfig } from "@dataconnect/admin-generated";
 
 /**
  * App Hosting supplies application-default credentials.  The explicit values
@@ -27,6 +29,15 @@ export function firebaseAdmin() {
     // The local dashboard remains usable without Firebase credentials.  A
     // production deployment must configure Firebase; callers fail closed for
     // staff access and use the in-process cache only for local development.
+    return null;
+  }
+}
+
+/** Server-only connector for Firebase Data Connect / Cloud SQL Postgres. */
+export function fairwayDataConnect() {
+  try {
+    return getDataConnect(connectorConfig, adminApp());
+  } catch {
     return null;
   }
 }

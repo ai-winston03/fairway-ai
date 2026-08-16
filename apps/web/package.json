@@ -14,6 +14,7 @@
     "gusto:sync": "node scripts/sync-gusto-labor.mjs",
     "lint": "next lint",
     "scheduler:run": "node scripts/run-scheduled-messages.mjs",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -33,6 +34,7 @@
     "autoprefixer": "^10.4.20",
     "postcss": "^8.5.1",
     "tailwindcss": "^3.4.17",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.7"
   }
 }

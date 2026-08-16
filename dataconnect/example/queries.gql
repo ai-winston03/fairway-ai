@@ -41,3 +41,29 @@ query ListDailyGolfMetrics(
     syncedAt
   }
 }
+
+query ListDailyCommerceMetrics(
+  $courseId: String!
+  $teeSheetId: String!
+  $start: Date!
+  $end: Date!
+) @auth(level: NO_ACCESS) {
+  dailyCommerceMetrics(
+    where: {
+      _and: [
+        { courseId: { eq: $courseId } }
+        { teeSheetId: { eq: $teeSheetId } }
+        { date: { ge: $start } }
+        { date: { le: $end } }
+      ]
+    }
+    orderBy: [{ date: ASC }, { department: ASC }]
+  ) {
+    date
+    department
+    transactions
+    unitsSold
+    revenue
+    syncedAt
+  }
+}

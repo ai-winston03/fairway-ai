@@ -74,6 +74,29 @@ export type ForeupGolfSnapshot = {
   unclassifiedRounds: number;
   priceClasses: string[];
   sourceBookings: number;
+  /** Present for database-backed reports.  Raw ForeUp snapshots remain usable
+   * by the sync code without manufacturing a daily time series. */
+  daily?: Array<{
+    date: string;
+    rounds: number;
+    bookings: number;
+    occupancy: number;
+    potentialSlots: number;
+    slotsAvailable: number;
+    revenue: number;
+    greenFeeRevenue: number;
+  }>;
+  commerce?: ForeupCommerceMetric[];
+};
+
+/** A sale can span outlets, so transaction counts are outlet-attributed—not
+ * unique whole-receipt counts across the entire clubhouse. */
+export type ForeupCommerceDepartment = "pro_shop" | "snack_shack" | "bar" | "fnb_unassigned";
+export type ForeupCommerceMetric = {
+  department: ForeupCommerceDepartment;
+  transactions: number;
+  unitsSold: number;
+  revenue: number;
 };
 
 export type ForeupUpcomingTeeTime = {
@@ -171,6 +194,30 @@ export class ForeupAdapter {
     return { data: all, included: [...included.values()] };
   }
 
+  /** Full POS ledger: includes standalone snack-shack, restaurant/bar, and
+   * counter sales—not merely purchases attached to a tee time. */
+  async listSales(courseId: string, startDate: string, endDate: string, token?: string) {
+    const auth = token ?? await this.createToken();
+    // ForeUp's sales date filter is end-exclusive.  A same-day reporting sync
+    // therefore needs the following calendar day as the endpoint's end date.
+    const exclusiveEndDate = nextIsoDate(endDate);
+    const all: JsonApiResource[] = [];
+    const included = new Map<string, JsonApiResource>();
+    for (let start = 0; start < 50000; start += 500) {
+      const pages = await Promise.all([0, 100, 200, 300, 400].map(async (offset) => {
+        const query = new URLSearchParams({ startDate, endDate: exclusiveEndDate, include: "items,payments", limit: "100", start: String(start + offset) });
+        return this.request(`/courses/${courseId}/sales?${query.toString()}`, auth);
+      }));
+      const lengths = pages.map((body) => Array.isArray(body.data) ? body.data.length : 0);
+      for (const body of pages) {
+        if (Array.isArray(body.data)) all.push(...body.data);
+        for (const record of body.included ?? []) included.set(`${record.type}:${record.id}`, record);
+      }
+      if (lengths.some((length) => length < 100)) break;
+    }
+    return { data: all, included: [...included.values()] };
+  }
+
   async listUpcomingBookingsForCustomer(courseId: string, teeSheetId: string, customerId: string, startDate: string, endDate: string): Promise<ForeupUpcomingTeeTime[]> {
     const token = await this.createToken();
     const query = new URLSearchParams({ startDate, endDate, include: "players", limit: "100", start: "0", "filter[customerId]": customerId });
@@ -195,12 +242,13 @@ export class ForeupAdapter {
 
   async getGolfSnapshot(courseId: string, teeSheetId: string, period: { start: string; end: string; label: string }, todayDate = period.end) {
     const token = await this.createToken();
-    const [today, priceClasses, bookings] = await Promise.all([
+    const [today, priceClasses, bookings, sales] = await Promise.all([
       this.getTeeSheetStats(courseId, teeSheetId, todayDate, token),
       this.listPriceClasses(courseId, token),
-      this.listBookings(courseId, teeSheetId, period.start, period.end, token)
+      this.listBookings(courseId, teeSheetId, period.start, period.end, token),
+      this.listSales(courseId, period.start, period.end, token)
     ]);
-    return summarizeGolf(today, period, priceClasses, bookings);
+    return { ...summarizeGolf(today, period, priceClasses, bookings), commerce: summarizeCommerce(sales) };
   }
 
   private async request(path: string, token?: string): Promise<JsonApiDocument> {
@@ -259,6 +307,59 @@ function summarizeGolf(today: ForeupTeeSheetStats, period: ForeupGolfSnapshot["p
   };
 }
 
+/**
+ * ForeUp's /sales ledger includes standalone POS and tee-sheet sales.  We use
+ * its included line items, exclude green fees (already modeled in golf), and
+ * always emit every reporting department so a quiet day is an explicit zero—not an
+ * ambiguous missing row.
+ */
+export function summarizeCommerce(sales: { data: JsonApiResource[]; included: JsonApiResource[] }): ForeupCommerceMetric[] {
+  const includedByKey = new Map(sales.included.map((item) => [`${item.type}:${item.id}`, item]));
+  const totals: Record<ForeupCommerceDepartment, ForeupCommerceMetric> = {
+    pro_shop: { department: "pro_shop", transactions: 0, unitsSold: 0, revenue: 0 },
+    snack_shack: { department: "snack_shack", transactions: 0, unitsSold: 0, revenue: 0 },
+    bar: { department: "bar", transactions: 0, unitsSold: 0, revenue: 0 },
+    fnb_unassigned: { department: "fnb_unassigned", transactions: 0, unitsSold: 0, revenue: 0 }
+  };
+  const saleIdsByDepartment: Record<ForeupCommerceDepartment, Set<string>> = { pro_shop: new Set(), snack_shack: new Set(), bar: new Set(), fnb_unassigned: new Set() };
+  for (const sale of sales.data) {
+    const saleAttributes = sale.attributes ?? {};
+    if (saleAttributes.deleted === true || saleAttributes.deletedAt) continue;
+    const items = relationshipRecords(sale, "items", includedByKey);
+    for (const item of items) {
+      const attributes = item.attributes ?? {};
+      const category = String(attributes.category ?? attributes.category_name ?? "");
+      const itemName = String(attributes.name ?? attributes.item_name ?? attributes.title ?? "");
+      if (isNonCommerceSale(`${category} ${attributes.price_category ?? ""} ${attributes.department ?? ""} ${itemName}`)) continue;
+      const department = commerceDepartment(category, itemName, String(attributes.department ?? attributes.location ?? attributes.revenue_center ?? ""));
+      const metric = totals[department];
+      metric.unitsSold += Math.max(0, numberAt(attributes, "quantity", "player_count", "units") || 1);
+      metric.revenue += numberAt(attributes, "total", "line_total", "amount");
+      saleIdsByDepartment[department].add(sale.id);
+    }
+  }
+  for (const department of Object.keys(totals) as ForeupCommerceDepartment[]) {
+    totals[department].transactions = saleIdsByDepartment[department].size;
+    totals[department].revenue = Math.round(totals[department].revenue * 100) / 100;
+  }
+  return Object.values(totals);
+}
+
+function isGreenFeeCategory(value: string) { return /green\s*fees?/i.test(value); }
+function isNonCommerceSale(value: string) {
+  return isGreenFeeCategory(value) || /account\s*payments?|invoice\s*payments?|membership\s*fees?|member\s*account/i.test(value);
+}
+function commerceDepartment(category: string, itemName: string, department: string): ForeupCommerceDepartment {
+  const value = `${category} ${itemName} ${department}`.toLowerCase();
+  // Prefer an explicit ForeUp department/location.  Name/category matching is
+  // deliberately conservative: ambiguous F&B remains visible for mapping,
+  // rather than being quietly assigned to the wrong outlet.
+  if (/snack\s*shack|turn\s*stand|halfway\s*house|grab.?and.?go/i.test(value)) return "snack_shack";
+  if (/\bbar\b|beverage\s*cart|restaurant|grill|kitchen|taproom|lounge/i.test(value)) return "bar";
+  if (/food|beverage|drink|snack|breakfast|lunch|dinner/i.test(value)) return "fnb_unassigned";
+  return "pro_shop";
+}
+
 function relationshipRecords(resource: JsonApiResource, relationship: string, included: Map<string, JsonApiResource>) {
   const data = resource.relationships?.[relationship]?.data;
   const references = Array.isArray(data) ? data : data ? [data] : [];
@@ -283,6 +384,12 @@ function proportional(total: number, numerator: number, denominator: number) {
 
 function roundSegment(segment: GolfSegment): GolfSegment {
   return { ...segment, carts: Math.round(segment.carts), greenFeeRevenue: Math.round(segment.greenFeeRevenue * 100) / 100 };
+}
+
+function nextIsoDate(value: string) {
+  const date = new Date(`${value}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
 }
 
 function mapCustomer(resource: JsonApiResource): ForeupCustomer {

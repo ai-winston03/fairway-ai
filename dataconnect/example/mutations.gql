@@ -48,6 +48,28 @@ mutation UpsertDailyGolfMetric(
   )
 }
 
+mutation UpsertDailyCommerceMetric(
+  $courseId: String!
+  $teeSheetId: String!
+  $date: Date!
+  $department: String!
+  $transactions: Int!
+  $unitsSold: Int!
+  $revenue: Float!
+) @auth(level: NO_ACCESS) {
+  dailyCommerceMetric_upsert(
+    data: {
+      courseId: $courseId
+      teeSheetId: $teeSheetId
+      date: $date
+      department: $department
+      transactions: $transactions
+      unitsSold: $unitsSold
+      revenue: $revenue
+    }
+  )
+}
+
 mutation StartForeupSyncRun($courseId: String!, $teeSheetId: String!) @auth(level: NO_ACCESS) {
   foreupSyncRun_insert(data: { courseId: $courseId, teeSheetId: $teeSheetId, status: "running" })
 }

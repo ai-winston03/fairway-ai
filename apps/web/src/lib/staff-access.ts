@@ -1,6 +1,7 @@
+import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { firebaseAdmin } from "@/lib/firebase-admin";
-import { Department, Permission, StaffRole, TeamAccessProfile, demoAccessProfiles } from "@/lib/authz";
+import { Department, Permission, StaffRole, TeamAccessProfile, can, canManageUsers, demoAccessProfiles } from "@/lib/authz";
 
 export type StaffRecord = TeamAccessProfile & { uid: string; status: "active" | "disabled"; createdAt?: unknown; updatedAt?: unknown };
 
@@ -54,4 +55,21 @@ export async function verifiedStaff(request: Request): Promise<StaffRecord | nul
   return null;
 }
 
-export function mayManageUsers(profile: StaffRecord) { return profile.permissions.includes("users:manage" as Permission); }
+export function mayManageUsers(profile: StaffRecord) {
+  return canManageUsers(profile);
+}
+
+export function requirePermission(profile: StaffRecord, permission: Permission) {
+  return can(profile, permission);
+}
+
+export async function staffGuard(request: Request, permission?: Permission) {
+  const staff = await verifiedStaff(request);
+  if (!staff) {
+    return { staff: null, error: NextResponse.json({ error: "Sign in is required." }, { status: 401 }) };
+  }
+  if (permission && !can(staff, permission)) {
+    return { staff, error: NextResponse.json({ error: "You do not have permission for this action." }, { status: 403 }) };
+  }
+  return { staff, error: null };
+}

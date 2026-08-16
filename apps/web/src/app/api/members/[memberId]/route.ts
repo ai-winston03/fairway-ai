@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cachedForeup } from "@/lib/foreup-cache";
 import { foreup } from "@/lib/foreup-adapter";
+import { can } from "@/lib/authz";
 import { verifiedStaff } from "@/lib/staff-access";
 
 type RouteContext = { params: Promise<{ memberId: string }> };
@@ -10,7 +11,9 @@ function isoDate(date: Date) {
 }
 
 export async function GET(request: NextRequest, context: RouteContext) {
-  if (!await verifiedStaff(request)) return NextResponse.json({ connected: false, error: "Sign in is required." }, { status: 401 });
+  const staff = await verifiedStaff(request);
+  if (!staff) return NextResponse.json({ connected: false, error: "Sign in is required." }, { status: 401 });
+  if (!can(staff, "member:lookup")) return NextResponse.json({ connected: false, error: "Member lookup is not allowed for this role." }, { status: 403 });
   const courseId = process.env.FOREUP_COURSE_ID;
   const teeSheetId = process.env.FOREUP_TEESHEET_ID;
   if (!courseId || !teeSheetId) {

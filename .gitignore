@@ -9,3 +9,5 @@ build/
 *.tsbuildinfo
 *.log
 .DS_Store
+
+.firebase-device-auth.json
