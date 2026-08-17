@@ -1,6 +1,6 @@
 {
   "apphosting": {
     "backendId": "fairway-ai",
-    "ignore": ["node_modules", ".git", ".next", "firebase-debug.log"]
+    "ignore": ["node_modules", ".git", ".next", "firebase-debug.log", ".env", ".env.local", ".env*.local", "*.tgz"]
   }
 }
