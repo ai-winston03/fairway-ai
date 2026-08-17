@@ -19,7 +19,7 @@ type Member = {
 };
 
 type TeeTime = { id: string; startsAt: string; title: string; players: number; carts: number; status: string };
-type MemberProfileResponse = { connected: boolean; member?: Member; teeTimes?: TeeTime[]; syncedAt?: string; error?: string };
+type MemberProfileResponse = { connected: boolean; member?: Member; teeTimes?: TeeTime[]; teeTimesStatus?: "held" | "missing"; syncedAt?: string; error?: string };
 type ThreadMessage = {
   id: string;
   author: "member" | "bot" | "staff";
@@ -37,6 +37,7 @@ function apiPath(path: string) {
 
 export function MemberWorkspace() {
   const [members, setMembers] = useState<Member[]>([]);
+  const [directorySyncedAt, setDirectorySyncedAt] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState("");
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
@@ -63,9 +64,10 @@ export function MemberWorkspace() {
     setError(null);
     try {
       const response = await fetch(apiPath("/api/members"), { cache: "no-store" });
-      const payload = await response.json() as { connected: boolean; members?: Member[]; error?: string };
-      if (!payload.connected) throw new Error(payload.error ?? "ForeUp member sync is unavailable.");
+      const payload = await response.json() as { connected: boolean; members?: Member[]; syncedAt?: string; error?: string };
+      if (!payload.connected) throw new Error(payload.error ?? "Member directory is not synced yet. Run the daily ForeUp hold.");
       const next = payload.members ?? [];
+      setDirectorySyncedAt(payload.syncedAt ?? null);
       setMembers(next);
       setSelectedId((current) => current && next.some((member) => member.id === current) ? current : next[0]?.id ?? "");
     } catch (loadError) {
@@ -146,7 +148,7 @@ export function MemberWorkspace() {
     return () => controller.abort();
   }, [selected?.id]);
 
-  if (loading) return <section className="empty-area"><Users size={24} /><strong>Loading member directory</strong><span>Reading current records from ForeUp.</span></section>;
+  if (loading) return <section className="empty-area"><Users size={24} /><strong>Loading member directory</strong><span>Reading the held ForeUp directory. This path does not live-pull ForeUp.</span></section>;
   if (error) return <section className="empty-area"><Users size={24} /><strong>Member directory needs attention</strong><span>{error}</span></section>;
 
   const smsEligible = members.filter((member) => member.phone && !member.optOutText).length;
@@ -157,7 +159,7 @@ export function MemberWorkspace() {
 
   return <section className="member-workspace" aria-label="Member directory and conversations">
     <header className="member-workspace-header">
-      <div><div className="eyebrow">Live ForeUp directory</div><h3>Member health and conversations</h3><p>Search a member, review their next tee times, then open their SMS thread.</p></div>
+      <div><div className="eyebrow">Held ForeUp directory</div><h3>Member health and conversations</h3><p>Search a member, review their next held tee times, then open their SMS thread.{directorySyncedAt ? ` Last synced ${new Date(directorySyncedAt).toLocaleString()}.` : ""}</p></div>
       <button className="refresh-report" aria-label="Refresh member directory" onClick={() => void loadMembers()} title="Refresh directory" type="button"><RefreshCw size={14} /></button>
     </header>
     <div className="live-grid member-health-grid"><article className="live-card"><Users size={18} /><span>Members</span><strong>{members.length}</strong><small>{membershipGroups} membership group{membershipGroups === 1 ? "" : "s"} represented</small></article><article className="live-card"><MessageSquareText size={18} /><span>SMS eligible</span><strong>{smsEligible}</strong><small>{members.length ? `${Math.round(smsEligible / members.length * 100)}% with a non-opted-out mobile` : "No members loaded"}</small></article><article className="live-card"><ShieldCheck size={18} /><span>Email eligible</span><strong>{emailEligible}</strong><small>{members.length ? `${Math.round(emailEligible / members.length * 100)}% contactable by email` : "No members loaded"}</small></article><article className="live-card"><ReceiptText size={18} /><span>Account balance</span><strong>{formatMoney(accountBalance)}</strong><small>{formatMoney(invoiceBalance)} invoice balance across directory</small></article></div>
@@ -174,7 +176,7 @@ export function MemberWorkspace() {
         {selected ? <>
           <div className="member-detail-heading"><div><h3>{selected.name}</h3><span>{selected.phone || "No phone on file"} · {selected.email || "No email on file"}</span></div><span className={selected.optOutText ? "sms-state blocked" : "sms-state"}><ShieldCheck size={14} />{selected.optOutText ? "SMS suppressed" : sms?.connected ? "SMS live" : "SMS queued"}</span></div>
           <div className="member-fact-row"><span>{selected.membershipGroups.join(" · ") || "Member"}</span><span>Handicap {selected.handicap || "—"}</span><span>{[selected.city, selected.state].filter(Boolean).join(", ") || "Location unavailable"}</span></div>
-          <div className="member-tee-times"><div className="member-section-title"><CalendarDays size={16} /><strong>Scheduled tee times</strong><small>Next 90 days</small></div>{loadingProfile ? <p>Loading tee times…</p> : profile?.connected ? profile.teeTimes?.length ? <div className="tee-time-list">{profile.teeTimes.map((teeTime) => <article key={teeTime.id}><strong>{formatTeeTime(teeTime.startsAt)}</strong><span>{teeTime.title} · {teeTime.players} players · {teeTime.carts} carts</span><small>{teeTime.status}</small></article>)}</div> : <p>No upcoming tee times in ForeUp.</p> : <p>{profile?.error ?? "No member profile loaded."}</p>}</div>
+          <div className="member-tee-times"><div className="member-section-title"><CalendarDays size={16} /><strong>Scheduled tee times</strong><small>Held next 90 days</small></div>{loadingProfile ? <p>Loading tee times…</p> : profile?.connected ? profile.teeTimes?.length ? <div className="tee-time-list">{profile.teeTimes.map((teeTime) => <article key={teeTime.id}><strong>{formatTeeTime(teeTime.startsAt)}</strong><span>{teeTime.title} · {teeTime.players} players · {teeTime.carts} carts</span><small>{teeTime.status}</small></article>)}</div> : <p>{profile.teeTimesStatus === "missing" ? "Upcoming tee times are not in the held copy." : "No upcoming tee times in the held copy."}</p> : <p>{profile?.error ?? "No member profile loaded."}</p>}</div>
           <div className="member-thread">
             <div className="member-thread-toolbar">
               <div><strong>SMS thread</strong><p>{selected.optOutText ? "ForeUp has this member opted out. Sending is disabled." : sms?.connected ? "Twilio is connected. Inbound hits /api/sms/inbound." : "Twilio is not connected yet. Drafts and staff replies are stored and queued."}</p></div>

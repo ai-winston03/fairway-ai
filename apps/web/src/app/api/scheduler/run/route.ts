@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { syncForeupDailyHold } from "@/lib/foreup-reporting-sync";
 import { getDueScheduledMessages } from "@/lib/member-directory";
 import { verifiedStaff } from "@/lib/staff-access";
 
@@ -11,16 +12,37 @@ export async function POST(request: NextRequest) {
   if (!schedulerAuthorized(request) && !await verifiedStaff(request)) {
     return NextResponse.json({ error: "Sign in is required." }, { status: 401 });
   }
-  const body = await request.json().catch(() => ({}));
+  const body = await request.json().catch(() => ({})) as { now?: string; jobs?: string[] };
   const now = body.now ? new Date(body.now) : new Date();
-  const dueMessages = getDueScheduledMessages(now);
+  const jobs = Array.isArray(body.jobs) && body.jobs.length ? body.jobs : ["messages"];
 
-  return NextResponse.json({
+  const payload: Record<string, unknown> = {
     mode: "deterministic-script",
     aiUsed: false,
-    dueCount: dueMessages.length,
-    dueMessages,
-    note:
-      "Cron should call this endpoint or the scheduler script. AI should only run when a deterministic parser marks a job needs_review."
-  });
+    jobs
+  };
+
+  if (jobs.includes("messages")) {
+    const dueMessages = getDueScheduledMessages(now);
+    payload.dueCount = dueMessages.length;
+    payload.dueMessages = dueMessages;
+    payload.note = "Cron should call this endpoint or the scheduler script. AI should only run when a deterministic parser marks a job needs_review.";
+  }
+
+  if (jobs.includes("foreup-hold")) {
+    const courseId = process.env.FOREUP_COURSE_ID, teeSheetId = process.env.FOREUP_TEESHEET_ID;
+    if (!courseId || !teeSheetId) {
+      return NextResponse.json({ error: "ForeUp course configuration is missing.", ...payload }, { status: 503 });
+    }
+    try {
+      payload.foreupHold = await syncForeupDailyHold(courseId, teeSheetId);
+    } catch (error) {
+      return NextResponse.json({
+        error: error instanceof Error ? error.message : "ForeUp hold sync failed.",
+        ...payload
+      }, { status: 502 });
+    }
+  }
+
+  return NextResponse.json(payload);
 }

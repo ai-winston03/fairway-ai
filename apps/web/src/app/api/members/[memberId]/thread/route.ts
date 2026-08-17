@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { cachedForeup } from "@/lib/foreup-cache";
-import { foreup } from "@/lib/foreup-adapter";
+import { memberHoldMissingPayload, readHeldMember } from "@/lib/foreup-hold";
 import {
   assignStaffToConversation,
   draftBotReply,
@@ -20,11 +19,16 @@ const threadSchema = z.object({
   staffUid: z.string().trim().min(1).optional()
 });
 
-async function memberPhone(memberId: string) {
+async function heldMemberPhone(memberId: string) {
   const courseId = process.env.FOREUP_COURSE_ID;
-  if (!courseId) return "";
-  const customers = await cachedForeup(`members:${courseId}`, 120_000, () => foreup.listCustomers(courseId));
-  return customers.find((customer) => customer.id === memberId)?.phone ?? "";
+  if (!courseId) return { error: NextResponse.json({ connected: false, error: "ForeUp course configuration is missing." }, { status: 503 }) };
+  const profile = await readHeldMember(courseId, memberId);
+  if ("missing" in profile) {
+    const payload = memberHoldMissingPayload(profile.missing);
+    return { error: NextResponse.json(payload, { status: profile.missing === "directory" ? 503 : 404 }) };
+  }
+  if (!profile.member.phone) return { error: NextResponse.json({ connected: false, error: "This member has no phone number." }, { status: 409 }) };
+  return { phone: profile.member.phone };
 }
 
 export async function POST(request: NextRequest, context: RouteContext) {
@@ -43,9 +47,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
     if (!canClaimMemberThread(staff)) {
       return NextResponse.json({ connected: false, error: "Only managers can assign member threads." }, { status: 403 });
     }
-    const phone = await memberPhone(memberId);
-    if (!phone) return NextResponse.json({ connected: false, error: "This member has no phone number." }, { status: 409 });
-    const conversation = existing ?? await getOrCreateConversation({ memberId, phone });
+    const held = await heldMemberPhone(memberId);
+    if ("error" in held) return held.error;
+    const conversation = existing ?? await getOrCreateConversation({ memberId, phone: held.phone });
     const next = await assignStaffToConversation(conversation.id, parsed.data.staffUid || staff.uid);
     return NextResponse.json({ connected: true, conversation: next ?? conversation });
   }
@@ -53,9 +57,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
     if (!canViewMemberThread(staff, assigned, staff.uid)) {
       return NextResponse.json({ connected: false, error: "This member thread is not assigned to you." }, { status: 403 });
     }
-    const phone = await memberPhone(memberId);
-    if (!phone) return NextResponse.json({ connected: false, error: "This member has no phone number." }, { status: 409 });
-    const conversation = existing ?? await getOrCreateConversation({ memberId, phone });
+    const held = await heldMemberPhone(memberId);
+    if ("error" in held) return held.error;
+    const conversation = existing ?? await getOrCreateConversation({ memberId, phone: held.phone });
     return NextResponse.json({
       connected: true,
       conversation,
@@ -68,11 +72,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
   if (!canAct) {
     return NextResponse.json({ connected: false, error: "This member thread is not assigned to you." }, { status: 403 });
   }
-  const phone = await memberPhone(memberId);
-  if (!phone) {
-    return NextResponse.json({ connected: false, error: "This member has no phone number." }, { status: 409 });
-  }
-  const conversation = existing ?? await getOrCreateConversation({ memberId, phone });
+  const held = await heldMemberPhone(memberId);
+  if ("error" in held) return held.error;
+  const conversation = existing ?? await getOrCreateConversation({ memberId, phone: held.phone });
   const claimed = canClaimMemberThread(staff)
     ? await assignStaffToConversation(conversation.id, staff.uid) ?? conversation
     : conversation;

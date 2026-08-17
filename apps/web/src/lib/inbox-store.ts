@@ -1,8 +1,8 @@
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { firebaseAdmin } from "@/lib/firebase-admin";
 import { defaultBotConfig } from "@/lib/bot-config";
-import { cachedForeup } from "@/lib/foreup-cache";
-import { ForeupCustomer, foreup } from "@/lib/foreup-adapter";
+import { readHeldMemberDirectory } from "@/lib/foreup-hold";
+import type { ForeupCustomer } from "@/lib/foreup-adapter";
 import { createBotReply } from "@/lib/mock-data";
 import { normalizePhone, phoneMatchKey, SmsDeliveryStatus, SmsProviderId } from "@/lib/sms-provider";
 
@@ -70,8 +70,8 @@ export async function findMemberByPhone(phone: string): Promise<ForeupCustomer |
   const key = phoneMatchKey(phone);
   if (!key) return null;
   try {
-    const customers = await cachedForeup(`members:${courseId}`, 120_000, () => foreup.listCustomers(courseId));
-    return customers.find((customer) => customer.member && phoneMatchKey(customer.phone) === key) ?? null;
+    const hold = await readHeldMemberDirectory(courseId);
+    return hold?.customers.find((customer) => customer.member && phoneMatchKey(customer.phone) === key) ?? null;
   } catch {
     return null;
   }

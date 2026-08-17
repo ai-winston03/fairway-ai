@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { cachedForeup } from "@/lib/foreup-cache";
-import { foreup } from "@/lib/foreup-adapter";
+import { memberHoldMissingPayload, readHeldMember } from "@/lib/foreup-hold";
 import {
   appendMessage,
   getConversationByMemberId,
@@ -18,11 +17,16 @@ const sendSchema = z.object({
   body: z.string().trim().min(1).max(1600)
 });
 
-async function memberPhone(memberId: string) {
+async function heldMemberPhone(memberId: string) {
   const courseId = process.env.FOREUP_COURSE_ID;
-  if (!courseId) return "";
-  const customers = await cachedForeup(`members:${courseId}`, 120_000, () => foreup.listCustomers(courseId));
-  return customers.find((customer) => customer.id === memberId)?.phone ?? "";
+  if (!courseId) return { error: NextResponse.json({ connected: false, error: "ForeUp course configuration is missing." }, { status: 503 }) };
+  const profile = await readHeldMember(courseId, memberId);
+  if ("missing" in profile) {
+    const payload = memberHoldMissingPayload(profile.missing);
+    return { error: NextResponse.json(payload, { status: profile.missing === "directory" ? 503 : 404 }) };
+  }
+  if (!profile.member.phone) return { error: NextResponse.json({ connected: false, error: "This member has no phone number." }, { status: 409 }) };
+  return { phone: profile.member.phone };
 }
 
 export async function GET(request: NextRequest, context: RouteContext) {
@@ -57,15 +61,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
   if (!parsed.success) {
     return NextResponse.json({ connected: false, error: "Message body is required." }, { status: 400 });
   }
-  const phone = await memberPhone(memberId);
-  if (!phone) {
-    return NextResponse.json({ connected: false, error: "This member has no phone number." }, { status: 409 });
-  }
+  const held = await heldMemberPhone(memberId);
+  if ("error" in held) return held.error;
   const existing = await getConversationByMemberId(memberId);
   if (!canMessageMember(staff, existing?.assignedStaffUids ?? [], staff.uid)) {
     return NextResponse.json({ connected: false, error: "You can only text members assigned to you." }, { status: 403 });
   }
-  const conversation = existing ?? await getOrCreateConversation({ memberId, phone });
+  const conversation = existing ?? await getOrCreateConversation({ memberId, phone: held.phone });
   if (conversation.automationStatus === "bot_active") {
     return NextResponse.json({
       connected: true,

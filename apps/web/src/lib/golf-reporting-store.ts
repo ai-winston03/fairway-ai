@@ -1,8 +1,11 @@
 import { listDailyCommerceMetrics, listDailyGolfMetrics, upsertDailyCommerceMetric, upsertDailyGolfMetric } from "@dataconnect/admin-generated";
 import { ForeupCommerceDepartment, ForeupCommerceMetric, ForeupGolfSnapshot, ForeupTeeSheetStats } from "@/lib/foreup-adapter";
 import { fairwayDataConnect } from "@/lib/firebase-admin";
+import { enumerateIsoDays, holdCoverage, latestSyncedAt, type HoldCoverage } from "@/lib/foreup-hold";
 
 type Period = { start: string; end: string; label: string };
+
+export const COMMERCE_DEPARTMENTS = ["pro_shop", "snack_shack", "bar", "fnb_unassigned"] as const;
 
 export type DailyGolfMetricInput = {
   courseId: string;
@@ -11,8 +14,11 @@ export type DailyGolfMetricInput = {
   snapshot: ForeupGolfSnapshot;
 };
 
+export type HeldGolfReport = ForeupGolfSnapshot & { coverage: HoldCoverage };
+
 export type CommerceReport = {
   period: Period;
+  coverage: HoldCoverage;
   proShop: { transactions: number; unitsSold: number; revenue: number };
   clubhouse: { transactions: number; unitsSold: number; revenue: number };
   snackShack: { transactions: number; unitsSold: number; revenue: number };
@@ -21,22 +27,23 @@ export type CommerceReport = {
   daily: Array<{ date: string; department: ForeupCommerceDepartment; transactions: number; unitsSold: number; revenue: number }>;
 };
 
-/** Returns null when Data Connect has no rows for the selected reporting range. */
-export async function readGolfReport(courseId: string, teeSheetId: string, period: Period, today: string): Promise<ForeupGolfSnapshot | null> {
+function emptyToday(date: string): ForeupTeeSheetStats {
+  return { date, bookings: 0, occupancy: 0, playersCheckedIn: 0, playerNoShows: 0, potentialSlots: 0, slotsAvailable: 0, revenue: 0 };
+}
+
+function emptyCommerceTotals() {
+  return { transactions: 0, unitsSold: 0, revenue: 0 };
+}
+
+/** Returns null only when Data Connect itself is unavailable. Partial ranges stay visible. */
+export async function readGolfReport(courseId: string, teeSheetId: string, period: Period, today: string): Promise<HeldGolfReport | null> {
   const dc = fairwayDataConnect();
   if (!dc) return null;
   const result = await listDailyGolfMetrics(dc, { courseId, teeSheetId, start: period.start, end: period.end });
   const rows = result.data.dailyGolfMetrics;
-  if (!rows.length) return null;
-
-  // A partial import is misleading for an aggregate report.  Only return a
-  // range when every day is present; the dashboard then tells the operator to
-  // run the protected sync instead of quietly presenting a partial total.
-  const startAt = new Date(`${period.start}T12:00:00Z`);
-  const endAt = new Date(`${period.end}T12:00:00Z`);
-  const expectedDays = Math.floor((endAt.getTime() - startAt.getTime()) / 86_400_000) + 1;
-  if (rows.length !== expectedDays) return null;
-
+  const expectedDays = enumerateIsoDays(period.start, period.end);
+  const heldDays = rows.map((row) => row.date);
+  const coverage = holdCoverage(expectedDays, heldDays, latestSyncedAt(rows.map((row) => row.syncedAt)));
   const sum = <T extends keyof (typeof rows)[number]>(key: T) => rows.reduce((total, row) => total + Number(row[key] ?? 0), 0);
   const todayRow = rows.find((row) => row.date === today);
   const todayStats: ForeupTeeSheetStats = todayRow ? {
@@ -48,11 +55,12 @@ export async function readGolfReport(courseId: string, teeSheetId: string, perio
     potentialSlots: todayRow.potentialSlots,
     slotsAvailable: todayRow.slotsAvailable,
     revenue: todayRow.revenue
-  } : { date: today, bookings: 0, occupancy: 0, playersCheckedIn: 0, playerNoShows: 0, potentialSlots: 0, slotsAvailable: 0, revenue: 0 };
+  } : emptyToday(today);
 
   return {
     today: todayStats,
     period,
+    coverage,
     member: {
       rounds: sum("memberRounds"), bookings: sum("memberBookings"), carts: sum("memberCarts"), greenFeeRevenue: sum("memberGreenFeeRevenue")
     },
@@ -92,34 +100,43 @@ export async function writeDailyGolfMetric({ courseId, teeSheetId, date, snapsho
   });
 }
 
-/** Reads only complete department/date coverage.  A partial import must be
- * fixed by the protected sync; it is never silently displayed as a zero day. */
+/** Reads held department/date rows. Incomplete days stay in missingDays instead of zeroing the whole range. */
 export async function readCommerceReport(courseId: string, teeSheetId: string, period: Period): Promise<CommerceReport | null> {
   const dc = fairwayDataConnect();
   if (!dc) return null;
   const result = await listDailyCommerceMetrics(dc, { courseId, teeSheetId, start: period.start, end: period.end });
   const rows = result.data.dailyCommerceMetrics;
-  const startAt = new Date(`${period.start}T12:00:00Z`), endAt = new Date(`${period.end}T12:00:00Z`);
-  const expectedDays = Math.floor((endAt.getTime() - startAt.getTime()) / 86_400_000) + 1;
-  if (rows.length !== expectedDays * 4) return null;
-  const totals = (department: ForeupCommerceDepartment) => rows.filter((row) => row.department === department).reduce((total, row) => ({
+  const expectedDays = enumerateIsoDays(period.start, period.end);
+  const rowsByDate = new Map<string, typeof rows>();
+  for (const row of rows) {
+    const current = rowsByDate.get(row.date) ?? [];
+    current.push(row);
+    rowsByDate.set(row.date, current);
+  }
+  const heldDays = [...rowsByDate.entries()]
+    .filter(([, dayRows]) => COMMERCE_DEPARTMENTS.every((department) => dayRows.some((row) => row.department === department)))
+    .map(([date]) => date);
+  const usedRows = rows.filter((row) => heldDays.includes(row.date));
+  const coverage = holdCoverage(expectedDays, heldDays, latestSyncedAt(rows.map((row) => row.syncedAt)));
+  const totals = (department: ForeupCommerceDepartment) => usedRows.filter((row) => row.department === department).reduce((total, row) => ({
     transactions: total.transactions + Number(row.transactions),
     unitsSold: total.unitsSold + Number(row.unitsSold),
     revenue: total.revenue + Number(row.revenue)
-  }), { transactions: 0, unitsSold: 0, revenue: 0 });
+  }), emptyCommerceTotals());
   return {
     period,
+    coverage,
     proShop: totals("pro_shop"),
     clubhouse: (["snack_shack", "bar", "fnb_unassigned"] as const).reduce((total, department) => {
       const outlet = totals(department);
       return { transactions: total.transactions + outlet.transactions, unitsSold: total.unitsSold + outlet.unitsSold, revenue: total.revenue + outlet.revenue };
-    }, { transactions: 0, unitsSold: 0, revenue: 0 }),
+    }, emptyCommerceTotals()),
     snackShack: totals("snack_shack"),
     bar: totals("bar"),
     fnbUnassigned: totals("fnb_unassigned"),
-    daily: rows.map((row) => ({
+    daily: usedRows.map((row) => ({
       date: row.date,
-      department: ["pro_shop", "snack_shack", "bar", "fnb_unassigned"].includes(row.department) ? row.department as ForeupCommerceDepartment : "fnb_unassigned",
+      department: COMMERCE_DEPARTMENTS.includes(row.department as typeof COMMERCE_DEPARTMENTS[number]) ? row.department as ForeupCommerceDepartment : "fnb_unassigned",
       transactions: Number(row.transactions), unitsSold: Number(row.unitsSold), revenue: Number(row.revenue)
     }))
   };

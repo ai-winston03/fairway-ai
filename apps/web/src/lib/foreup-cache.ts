@@ -9,10 +9,10 @@ function keyId(key: string) {
 }
 
 /**
- * Read-through cache for ForeUp.  Firestore makes this survive App Hosting
- * instance recycling; memory keeps repeat reads within one request path fast.
- * The caller controls freshness by endpoint: tee sheets are short-lived,
- * member directory medium-lived, and closed reporting periods long-lived.
+ * Sync-job helper only. Request routes (dashboard, members, member threads)
+ * must read the durable hold and must not call this on a cache miss.
+ * Firestore makes a scheduled pull survive App Hosting recycling; memory keeps
+ * repeat sync reads inside one job fast.
  */
 export async function cachedForeup<T>(key: string, ttlMs: number, load: () => Promise<T>): Promise<T> {
   const now = Date.now();

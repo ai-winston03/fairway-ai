@@ -313,6 +313,44 @@ function summarizeGolf(today: ForeupTeeSheetStats, period: ForeupGolfSnapshot["p
  * always emit every reporting department so a quiet day is an explicit zero—not an
  * ambiguous missing row.
  */
+export function upcomingTeeTimesByCustomer(bookings: { data: JsonApiResource[]; included: JsonApiResource[] }): Record<string, ForeupUpcomingTeeTime[]> {
+  const includedByKey = new Map(bookings.included.map((item) => [`${item.type}:${item.id}`, item]));
+  const byCustomer: Record<string, ForeupUpcomingTeeTime[]> = {};
+  for (const booking of bookings.data) {
+    const attributes = booking.attributes ?? {};
+    if (attributes.isReround === true || attributes.status === "deleted") continue;
+    const startsAt = String(attributes.start ?? "");
+    if (!startsAt) continue;
+    const teeTime: ForeupUpcomingTeeTime = {
+      id: booking.id,
+      startsAt,
+      title: String(attributes.title ?? "Tee time"),
+      players: numberAt(attributes, "playerCount", "players"),
+      carts: numberAt(attributes, "carts"),
+      status: String(attributes.status ?? "confirmed")
+    };
+    const customerIds = new Set<string>();
+    const bookingCustomer = String(attributes.customerId ?? attributes.customer_id ?? "");
+    if (bookingCustomer) customerIds.add(bookingCustomer);
+    const relatedCustomer = booking.relationships?.customer?.data;
+    if (relatedCustomer && !Array.isArray(relatedCustomer) && relatedCustomer.id) customerIds.add(relatedCustomer.id);
+    for (const player of relationshipRecords(booking, "players", includedByKey)) {
+      const playerAttributes = player.attributes ?? {};
+      const playerCustomer = String(playerAttributes.customerId ?? playerAttributes.customer_id ?? "");
+      if (playerCustomer) customerIds.add(playerCustomer);
+      const playerRelated = player.relationships?.customer?.data;
+      if (playerRelated && !Array.isArray(playerRelated) && playerRelated.id) customerIds.add(playerRelated.id);
+    }
+    for (const customerId of customerIds) {
+      (byCustomer[customerId] ??= []).push(teeTime);
+    }
+  }
+  for (const teeTimes of Object.values(byCustomer)) {
+    teeTimes.sort((left, right) => left.startsAt.localeCompare(right.startsAt));
+  }
+  return byCustomer;
+}
+
 export function summarizeCommerce(sales: { data: JsonApiResource[]; included: JsonApiResource[] }): ForeupCommerceMetric[] {
   const includedByKey = new Map(sales.included.map((item) => [`${item.type}:${item.id}`, item]));
   const totals: Record<ForeupCommerceDepartment, ForeupCommerceMetric> = {

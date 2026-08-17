@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { summarizeCommerce } from "./foreup-adapter";
+import { summarizeCommerce, upcomingTeeTimesByCustomer } from "./foreup-adapter";
 
 function salesFixture() {
   return {
@@ -23,5 +23,26 @@ describe("summarizeCommerce", () => {
     expect(byDepartment.get("bar")).toMatchObject({ transactions: 1, unitsSold: 1, revenue: 7 });
     expect(byDepartment.get("fnb_unassigned")).toMatchObject({ transactions: 1, unitsSold: 1, revenue: 11.5 });
     expect(byDepartment.get("pro_shop")).toMatchObject({ transactions: 0, unitsSold: 0, revenue: 0 });
+  });
+});
+
+describe("upcomingTeeTimesByCustomer", () => {
+  it("indexes bookings from booking, player, and relationship customer ids", () => {
+    const byCustomer = upcomingTeeTimesByCustomer({
+      data: [{
+        id: "tee_1",
+        type: "bookings",
+        attributes: { start: "2026-08-17T15:36:00.000Z", title: "Saturday", playerCount: 2, carts: 1, status: "confirmed", customerId: "3612897" },
+        relationships: { players: { data: [{ id: "player_1", type: "players" }] } }
+      }],
+      included: [{
+        id: "player_1",
+        type: "players",
+        attributes: { customer_id: "3612911" },
+        relationships: { customer: { data: { id: "3613024", type: "customers" } } }
+      }]
+    });
+    expect(Object.keys(byCustomer).sort()).toEqual(["3612897", "3612911", "3613024"]);
+    expect(byCustomer["3612897"][0]).toMatchObject({ id: "tee_1", players: 2, carts: 1 });
   });
 });

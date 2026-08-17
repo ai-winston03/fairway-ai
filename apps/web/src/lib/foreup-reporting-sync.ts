@@ -1,5 +1,8 @@
-import { foreup } from "@/lib/foreup-adapter";
+import { cachedForeup } from "@/lib/foreup-cache";
+import { addIsoDays, dailyHoldRange, writeHeldMemberDirectory } from "@/lib/foreup-hold";
+import { foreup, upcomingTeeTimesByCustomer } from "@/lib/foreup-adapter";
 import { writeDailyCommerceMetrics, writeDailyGolfMetric } from "@/lib/golf-reporting-store";
+import { yubaToday } from "@/lib/report-period";
 
 const isoDate = (date: Date) => date.toISOString().slice(0, 10);
 
@@ -17,4 +20,40 @@ export async function syncForeupReportingRange(courseId: string, teeSheetId: str
     await writeDailyCommerceMetrics(courseId, teeSheetId, day, snapshot.commerce);
   }
   return { start, end, rowsWritten: days };
+}
+
+export async function syncForeupMemberHold(courseId: string, teeSheetId: string, today = yubaToday()) {
+  const customers = await cachedForeup(`members:${courseId}`, 120_000, () => foreup.listCustomers(courseId));
+  let upcomingByCustomerId: Awaited<ReturnType<typeof upcomingTeeTimesByCustomer>> = {};
+  let upcomingSynced = false;
+  let bookingsError: string | undefined;
+  try {
+    const end = addIsoDays(today, 90);
+    const bookings = await cachedForeup(`upcoming:${courseId}:${today}`, 120_000, () => foreup.listBookings(courseId, teeSheetId, today, end));
+    upcomingByCustomerId = upcomingTeeTimesByCustomer(bookings);
+    upcomingSynced = true;
+  } catch (error) {
+    bookingsError = error instanceof Error ? error.message : "Upcoming booking hold failed.";
+  }
+  await writeHeldMemberDirectory({
+    courseId,
+    syncedAt: new Date().toISOString(),
+    customers,
+    upcomingByCustomerId,
+    upcomingSynced
+  });
+  return {
+    customers: customers.length,
+    members: customers.filter((customer) => customer.member).length,
+    upcomingCustomers: Object.keys(upcomingByCustomerId).length,
+    upcomingSynced,
+    bookingsError
+  };
+}
+
+export async function syncForeupDailyHold(courseId: string, teeSheetId: string, today = yubaToday()) {
+  const range = dailyHoldRange(today);
+  const reporting = await syncForeupReportingRange(courseId, teeSheetId, range.start, range.end);
+  const members = await syncForeupMemberHold(courseId, teeSheetId, today);
+  return { range, reporting, members };
 }

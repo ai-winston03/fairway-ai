@@ -10,6 +10,7 @@
     "build": "next build",
     "foreup:import": "node scripts/import-foreup-members.mjs",
     "foreup:reporting-sync": "node scripts/sync-foreup-reporting.mjs",
+    "foreup:hold": "node scripts/sync-foreup-hold.mjs",
     "gusto:import": "node scripts/import-gusto-labor.mjs",
     "gusto:sync": "node scripts/sync-gusto-labor.mjs",
     "lint": "next lint",
