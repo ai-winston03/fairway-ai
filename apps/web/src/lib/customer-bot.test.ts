@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./firebase-admin", () => ({ firebaseAdmin: () => null }));
 
-import { handleCustomerMessage } from "./customer-bot";
+import { handleCustomerMessage, queuePreTurnSnackShackPrompt } from "./customer-bot";
 import type { ForeupCustomer } from "./foreup-adapter";
 import { writeHeldAvailability, writeHeldMemberDirectory } from "./foreup-hold";
 import { findMemberByPhone, getOrCreateConversation, setAutomationStatus } from "./inbox-store";
@@ -86,6 +86,58 @@ describe("customer bot phone match and persistence", () => {
     });
     expect(turn.shouldReply).toBe(false);
     expect(turn.reply).toBeNull();
+  });
+
+  it("queues a pre-turn snack-shack prompt and handles the reply", async () => {
+    const conversation = await getOrCreateConversation({ phone: memberPhone });
+    const queued = await queuePreTurnSnackShackPrompt({
+      conversation,
+      teeTime: { id: "2026-08-22-0820", startsAt: "2026-08-22T08:20:00-05:00" },
+      now: new Date("2026-08-22T06:50:00-05:00")
+    });
+    expect(queued.shouldSend).toBe(true);
+    expect(queued.message).toMatch(/snack shack at the turn/i);
+    expect(queued.conversation.botState?.phase).toBe("pre_turn");
+
+    const reply = await handleCustomerMessage({
+      conversation: queued.conversation,
+      body: "no",
+      now: new Date("2026-08-22T06:51:00-05:00")
+    });
+    expect(reply.shouldReply).toBe(true);
+    expect(reply.conversation.botState?.preTurnOutreach?.status).toBe("declined");
+    expect(reply.conversation.botState?.slots.foodAndBeverage).toBe("none");
+  });
+
+  it("does not queue a pre-turn prompt when paused, owned, or opted out", async () => {
+    const conversation = await getOrCreateConversation({ phone: "+18015550003" });
+    const paused = await setAutomationStatus(conversation.id, "staff_paused");
+    const pausedQueue = await queuePreTurnSnackShackPrompt({
+      conversation: paused ?? conversation,
+      teeTime: { id: "2026-08-22-0820", startsAt: "2026-08-22T08:20:00-05:00" },
+      now: new Date("2026-08-22T06:50:00-05:00")
+    });
+    expect(pausedQueue.shouldSend).toBe(false);
+    expect(pausedQueue.message).toBeNull();
+    expect(pausedQueue.reason).toBe("staff_paused");
+
+    const ownedConversation = await getOrCreateConversation({ phone: "+18015550004" });
+    const owned = await setAutomationStatus(ownedConversation.id, "staff_owned");
+    const ownedQueue = await queuePreTurnSnackShackPrompt({
+      conversation: owned ?? ownedConversation,
+      teeTime: { id: "2026-08-22-0820", startsAt: "2026-08-22T08:20:00-05:00" },
+      now: new Date("2026-08-22T06:50:00-05:00")
+    });
+    expect(ownedQueue.reason).toBe("staff_owned");
+
+    const optedOut = await queuePreTurnSnackShackPrompt({
+      conversation: await getOrCreateConversation({ phone: "+18015550005" }),
+      teeTime: { id: "2026-08-22-0820", startsAt: "2026-08-22T08:20:00-05:00" },
+      member: { optOutText: true },
+      now: new Date("2026-08-22T06:50:00-05:00")
+    });
+    expect(optedOut.reason).toBe("opted_out");
+    expect(optedOut.shouldSend).toBe(false);
   });
 
   it("pauses the bot on a handoff keyword", async () => {

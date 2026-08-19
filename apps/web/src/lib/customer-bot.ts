@@ -1,4 +1,4 @@
-import { defaultBotConfig } from "@/lib/bot-config";
+import { BotBehaviorConfig, defaultBotConfig } from "@/lib/bot-config";
 import {
   ConversationState,
   ConversationTurnResult,
@@ -12,6 +12,11 @@ import {
   saveConversationBotState,
   setAutomationStatus
 } from "@/lib/inbox-store";
+import {
+  planPreTurnSnackShackOutreach,
+  PreTurnOutreachReason,
+  PreTurnTeeTime
+} from "@/lib/pre-turn-outreach";
 import { demoAvailableTeeTimes, ProposedTeeTime } from "@/lib/tee-time-availability";
 
 export type CustomerBotTurnInput = {
@@ -28,6 +33,22 @@ export type CustomerBotTurn = {
   reply: string | null;
   shouldReply: boolean;
   result: ConversationTurnResult;
+};
+
+export type PreTurnOutreachQueueInput = {
+  conversation: InboxConversation;
+  teeTime?: PreTurnTeeTime | null;
+  member?: { optOutText?: boolean } | null;
+  persist?: boolean;
+  now?: Date;
+  config?: BotBehaviorConfig;
+};
+
+export type PreTurnOutreachQueueResult = {
+  conversation: InboxConversation;
+  shouldSend: boolean;
+  message: string | null;
+  reason: PreTurnOutreachReason;
 };
 
 function pausedResult(state: ConversationState | undefined, phoneMatched: boolean, memberId?: string): ConversationTurnResult {
@@ -101,5 +122,38 @@ export async function handleCustomerMessage(input: CustomerBotTurnInput): Promis
     reply: result.shouldReply ? result.reply : null,
     shouldReply: result.shouldReply,
     result
+  };
+}
+
+export async function queuePreTurnSnackShackPrompt(input: PreTurnOutreachQueueInput): Promise<PreTurnOutreachQueueResult> {
+  const persist = input.persist !== false;
+  const member = input.member !== undefined
+    ? input.member
+    : await findMemberByPhone(input.conversation.phone);
+  const decision = planPreTurnSnackShackOutreach({
+    teeTime: input.teeTime,
+    conversation: input.conversation,
+    member,
+    now: input.now,
+    config: input.config ?? defaultBotConfig
+  });
+
+  let conversation = input.conversation;
+  if (decision.shouldSend) {
+    conversation = {
+      ...conversation,
+      botState: decision.state,
+      memberId: conversation.memberId
+    };
+    if (persist) {
+      conversation = await saveConversationBotState(conversation.id, decision.state) ?? conversation;
+    }
+  }
+
+  return {
+    conversation,
+    shouldSend: decision.shouldSend,
+    message: decision.message,
+    reason: decision.reason
   };
 }

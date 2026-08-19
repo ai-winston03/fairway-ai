@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { defaultBotConfig } from "./bot-config";
 import {
   classifyIntent,
+  emptyConversationState,
   extractBookingSlots,
   runConversationTurn,
   type ConversationState
@@ -144,6 +145,52 @@ describe("runConversationTurn", () => {
     expect(current.state.booked).toBe(false);
     expect(current.nextActions).toEqual(["hold_request"]);
     expect(current.reply).toMatch(/did not book or charge/i);
+  });
+
+  it("records a pre-turn snack-shack yes, no, and order", () => {
+    const prompted = emptyConversationState({
+      phase: "pre_turn",
+      phoneMatched: true,
+      preTurnOutreach: {
+        teeTimeId: `${saturday}-0820`,
+        startsAt: `${saturday}T08:20:00-05:00`,
+        status: "prompted"
+      }
+    });
+
+    const yes = turn("yes", prompted);
+    expect(yes.state.phase).toBe("pre_turn");
+    expect(yes.state.preTurnOutreach?.status).toBe("prompted");
+    expect(yes.reply).toMatch(/what should the snack shack/i);
+    expect(yes.booked).toBe(false);
+
+    const order = turn("two hot dogs", yes.state);
+    expect(order.state.preTurnOutreach?.status).toBe("ordered");
+    expect(order.state.slots.foodAndBeverage).toMatch(/hot dogs/i);
+    expect(order.reply).toMatch(/noted for the snack shack/i);
+    expect(order.nextActions).toContain("hold_snack_shack");
+    expect(order.booked).toBe(false);
+
+    const declined = turn("no", prompted);
+    expect(declined.state.preTurnOutreach?.status).toBe("declined");
+    expect(declined.state.slots.foodAndBeverage).toBe("none");
+    expect(declined.reply).toMatch(/nothing from the snack shack/i);
+    expect(declined.nextActions).toContain("snack_shack_declined");
+  });
+
+  it("does not auto-reply to a pre-turn thread when staff owns it", () => {
+    const prompted = emptyConversationState({
+      phase: "pre_turn",
+      preTurnOutreach: { teeTimeId: "tee-1", startsAt: `${saturday}T08:20:00-05:00`, status: "prompted" }
+    });
+    const result = runConversationTurn({
+      text: "two hot dogs",
+      state: prompted,
+      now,
+      automationStatus: "staff_owned"
+    });
+    expect(result.shouldReply).toBe(false);
+    expect(result.state.preTurnOutreach?.status).toBe("prompted");
   });
 
   it("respects bot config when guests are not required", () => {

@@ -9,6 +9,7 @@ import {
   runConversationTurn
 } from "@/lib/conversation-engine";
 import { initialMessages, Message } from "@/lib/mock-data";
+import { planPreTurnSnackShackOutreach } from "@/lib/pre-turn-outreach";
 import { demoAvailableTeeTimes } from "@/lib/tee-time-availability";
 
 function slotSummary(state: ConversationState) {
@@ -19,9 +20,17 @@ function slotSummary(state: ConversationState) {
     state.slots.guestCount != null ? `${state.slots.guestCount} guests` : null,
     state.slots.cartCount != null ? `${state.slots.cartCount} carts` : null,
     state.slots.foodAndBeverage,
+    state.phase === "pre_turn" ? `pre-turn ${state.preTurnOutreach?.status ?? "prompt"}` : null,
     state.phase === "staff_hold" ? "staff hold" : null
   ].filter(Boolean);
   return parts.length ? parts.join(" · ") : "Collecting date, players, guests, carts, and F&B";
+}
+
+function demoTeeTimeInNinetyMinutes(now = new Date()) {
+  const start = new Date(now.getTime() + 90 * 60 * 1000);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const startsAt = `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}T${pad(start.getHours())}:${pad(start.getMinutes())}:00`;
+  return { id: `demo-pre-turn-${startsAt}`, startsAt };
 }
 
 export function BotSimulator() {
@@ -34,6 +43,26 @@ export function BotSimulator() {
   }));
   const today = calendarDateInZone(new Date(), "America/Chicago");
   const availableSlots = useMemo(() => demoAvailableTeeTimes(today), [today]);
+
+  function previewBeforeTheTurn() {
+    const now = new Date();
+    const decision = planPreTurnSnackShackOutreach({
+      teeTime: demoTeeTimeInNinetyMinutes(now),
+      conversation: { automationStatus: "bot_active", botState: state },
+      now
+    });
+    if (!decision.shouldSend || !decision.message) return;
+    setMessages((current) => [
+      ...current,
+      {
+        id: crypto.randomUUID(),
+        author: "bot",
+        text: decision.message ?? "",
+        timestamp: "Now"
+      }
+    ]);
+    setState(decision.state);
+  }
 
   function sendMessage(event: FormEvent) {
     event.preventDefault();
@@ -81,7 +110,7 @@ export function BotSimulator() {
         </div>
         <div className="status-pill">
           <span />
-          {state.phase === "staff_hold" ? "Staff hold" : "Online"}
+          {state.phase === "staff_hold" ? "Staff hold" : state.phase === "pre_turn" ? "Pre-turn" : "Online"}
         </div>
       </div>
 
@@ -117,6 +146,12 @@ export function BotSimulator() {
         ))}
       </div>
 
+      <div className="bot-preview-actions">
+        <button className="button secondary" onClick={previewBeforeTheTurn} type="button">
+          Preview before the turn
+        </button>
+      </div>
+
       <form className="composer" onSubmit={sendMessage}>
         <input
           aria-label="Message"
@@ -142,6 +177,10 @@ export function BotSimulator() {
         <div className="step">
           <span className="step-number">3</span>
           <span>Hold the request for staff. No live ForeUp booking or account charge from this chat.</span>
+        </div>
+        <div className="step">
+          <span className="step-number">4</span>
+          <span>Before the turn, preview a snack-shack ping. Replies stay in this thread — no SMS is sent.</span>
         </div>
       </div>
     </section>

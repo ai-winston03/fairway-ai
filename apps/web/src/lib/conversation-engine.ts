@@ -22,9 +22,17 @@ export type ConversationPhase =
   | "collecting"
   | "proposing"
   | "addons"
+  | "pre_turn"
   | "confirming"
   | "staff_hold"
   | "complete";
+
+export type PreTurnOutreachState = {
+  teeTimeId: string;
+  startsAt: string;
+  status: "prompted" | "ordered" | "declined";
+  sentAt?: string;
+};
 
 export type BookingSlots = {
   date?: string;
@@ -46,6 +54,7 @@ export type ConversationState = {
   memberId?: string;
   handoffReason?: string;
   booked: false;
+  preTurnOutreach?: PreTurnOutreachState;
 };
 
 export type ConversationTurnInput = {
@@ -228,8 +237,8 @@ export function extractBookingSlots(text: string, now: Date, timeZone: string): 
     if (carts) slots.cartCount = Number(carts[1]);
   }
 
-  if (/^(none|nope)$/.test(lower) || /\b(no (food|drinks?|fnb|order)|nothing to eat)\b/.test(lower)) slots.foodAndBeverage = "none";
-  else if (/\b(food|drink|breakfast|burrito|beer|transfusion|hot dog|order)\b/.test(lower)) {
+  if (/^(none|nope|nothing)$/.test(lower) || /\b(no (food|drinks?|fnb|order)|nothing to eat)\b/.test(lower)) slots.foodAndBeverage = "none";
+  else if (/\b(food|drinks?|breakfast|burrito|beer|transfusion|hot dogs?|snack|wrap|order)\b/.test(lower)) {
     const note = text.replace(/\s+/g, " ").trim();
     slots.foodAndBeverage = note.length > 80 ? `${note.slice(0, 77)}...` : note;
   }
@@ -288,6 +297,54 @@ function staffHold(state: ConversationState, reason: string, reply: string, acti
 
 function replyFor(state: ConversationState, reply: string, actions: string[]): ConversationTurnResult {
   return { state: { ...state, booked: false }, reply, shouldReply: true, booked: false, nextActions: actions };
+}
+
+function handlePreTurnReply(state: ConversationState, intent: ConversationIntent): ConversationTurnResult {
+  const outreach = state.preTurnOutreach ?? {
+    teeTimeId: "unknown",
+    startsAt: "",
+    status: "prompted" as const
+  };
+  const food = state.slots.foodAndBeverage;
+
+  if (intent === "decline" || food === "none") {
+    return replyFor(
+      {
+        ...state,
+        phase: "pre_turn",
+        slots: { ...state.slots, foodAndBeverage: "none" },
+        preTurnOutreach: { ...outreach, status: "declined" }
+      },
+      "All set. Nothing from the snack shack. Text the shop if that changes.",
+      ["snack_shack_declined"]
+    );
+  }
+
+  if (food) {
+    return replyFor(
+      {
+        ...state,
+        phase: "pre_turn",
+        preTurnOutreach: { ...outreach, status: "ordered" }
+      },
+      `Noted for the snack shack: ${food}. Staff will confirm. I did not charge an account.`,
+      ["hold_snack_shack"]
+    );
+  }
+
+  if (intent === "confirm") {
+    return replyFor(
+      { ...state, phase: "pre_turn", preTurnOutreach: { ...outreach, status: "prompted" } },
+      "What should the snack shack have ready at the turn?",
+      ["ask_snack_shack_order"]
+    );
+  }
+
+  return replyFor(
+    { ...state, phase: "pre_turn", preTurnOutreach: { ...outreach, status: "prompted" } },
+    "Want anything from the snack shack at the turn? Reply with an order or no.",
+    ["ask_snack_shack"]
+  );
 }
 
 function matchProposedSlot(text: string, proposed: ProposedTeeTime[]) {
@@ -350,6 +407,10 @@ export function runConversationTurn(input: ConversationTurnInput): ConversationT
         : "I cannot charge an account until this phone matches the member record. Staff will verify identity before any charge.",
       ["identity_hold", "staff_review"]
     );
+  }
+
+  if (state.phase === "pre_turn") {
+    return handlePreTurnReply(state, intent);
   }
 
   if (state.slots.playerCount && state.slots.playerCount > config.maxPlayersBySms) {
