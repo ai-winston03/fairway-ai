@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { handleCustomerMessage } from "@/lib/customer-bot";
 import {
   appendMessage,
-  draftBotReply,
-  getOrCreateConversation,
-  mentionsHandoff,
-  setAutomationStatus,
-  staffHoldMessage
+  getOrCreateConversation
 } from "@/lib/inbox-store";
 import { getSmsProviderStatus, sendSms, twilioConfigured, verifyTwilioSignature } from "@/lib/sms-provider";
 import { verifiedStaff } from "@/lib/staff-access";
@@ -58,32 +55,15 @@ export async function POST(request: NextRequest) {
   });
   conversation = inbound.conversation;
 
-  const handoff = mentionsHandoff(body);
-  if (handoff && conversation.automationStatus === "bot_active") {
-    conversation = await setAutomationStatus(conversation.id, "staff_paused") ?? conversation;
-    const hold = staffHoldMessage();
-    const sent = await sendSms({ to: conversation.phone, body: hold });
-    await appendMessage({
-      conversation,
-      direction: "outbound",
-      author: "bot",
-      body: hold,
-      status: sent.status,
-      provider: sent.provider,
-      providerSid: sent.sid
-    });
-    return twiml();
-  }
+  const turn = await handleCustomerMessage({ conversation, body });
+  if (!turn.shouldReply || !turn.reply) return twiml();
 
-  if (conversation.automationStatus !== "bot_active") return twiml();
-
-  const reply = draftBotReply(body);
-  const sent = await sendSms({ to: conversation.phone, body: reply });
+  const sent = await sendSms({ to: turn.conversation.phone, body: turn.reply });
   await appendMessage({
-    conversation,
+    conversation: turn.conversation,
     direction: "outbound",
     author: "bot",
-    body: reply,
+    body: turn.reply,
     status: sent.status,
     provider: sent.provider,
     providerSid: sent.sid

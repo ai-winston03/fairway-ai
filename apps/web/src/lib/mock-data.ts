@@ -1,3 +1,6 @@
+import { calendarDateInZone, runConversationTurn } from "@/lib/conversation-engine";
+import { demoAvailableTeeTimes } from "@/lib/tee-time-availability";
+
 export type Message = {
   id: string;
   author: "member" | "bot";
@@ -33,20 +36,7 @@ export const initialMessages: Message[] = [
     author: "bot",
     timestamp: "9:02 AM",
     text:
-      "Good morning. I can help book tee times, add guests, reserve carts, and place clubhouse orders. What day would you like to play?"
-  },
-  {
-    id: "m2",
-    author: "member",
-    timestamp: "9:03 AM",
-    text: "Saturday morning for two members and one guest"
-  },
-  {
-    id: "m3",
-    author: "bot",
-    timestamp: "9:03 AM",
-    text:
-      "I found 8:20, 8:36, and 9:04. Will the guest need a cart, and should I add any food or drinks for pickup?"
+      "I can hold a tee-time request, guests, carts, and a clubhouse order. What day would you like to play?"
   }
 ];
 
@@ -127,23 +117,11 @@ export const recommendations = [
 ];
 
 export function createBotReply(message: string) {
-  const lower = message.toLowerCase();
-
-  if (lower.includes("guest") || lower.includes("guests")) {
-    return "Perfect. I’ll include the guest on the booking. Will they need a cart, rental clubs, or a clubhouse order before the round?";
-  }
-
-  if (lower.includes("cart") || lower.includes("carts")) {
-    return "I can reserve carts with the tee time. Should I charge the member account, split by player, or leave payment for check-in?";
-  }
-
-  if (lower.includes("food") || lower.includes("drink") || lower.includes("order")) {
-    return "I can add a clubhouse order. What would you like, and should it be ready before the tee time or at the turn?";
-  }
-
-  if (lower.includes("book") || lower.includes("tee") || lower.includes("time")) {
-    return "I found 8:12, 8:28, and 8:52. How many players, and will any guests be joining?";
-  }
-
-  return "Got it. I can help with tee time, guests, carts, account charge, or food and beverage. What should I handle first?";
+  const now = new Date();
+  return runConversationTurn({
+    text: message,
+    now,
+    availableSlots: demoAvailableTeeTimes(calendarDateInZone(now, "America/Chicago")),
+    phoneMatched: true
+  }).reply;
 }

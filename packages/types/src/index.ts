@@ -4,10 +4,12 @@ export type TeeTimeBookingIntent = {
   memberId?: string;
   requestedDate?: string;
   requestedWindow?: string;
+  requestedTime?: string;
   playerCount?: number;
   guestCount?: number;
   cartCount?: number;
   foodAndBeverageOrder?: string;
+  selectedSlotId?: string;
 };
 
 export type ForeupWebhookEvent =

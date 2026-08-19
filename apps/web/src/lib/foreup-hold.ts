@@ -1,5 +1,6 @@
 import type { ForeupCustomer, ForeupUpcomingTeeTime } from "./foreup-adapter";
 import { firebaseAdmin } from "./firebase-admin";
+import { filterAvailableTeeTimes, HeldAvailability, ProposedTeeTime, TeeTimeQuery } from "./tee-time-availability";
 
 export type HoldStatus = "complete" | "partial" | "missing";
 
@@ -27,6 +28,7 @@ export type HeldMemberProfile = {
 };
 
 const memoryDirectories = new Map<string, HeldMemberDirectory>();
+const memoryAvailability = new Map<string, HeldAvailability>();
 
 export function addIsoDays(iso: string, days: number) {
   const date = new Date(`${iso}T12:00:00Z`);
@@ -153,4 +155,57 @@ export async function readHeldMember(courseId: string, memberId: string): Promis
     teeTimesStatus: directory.upcomingSynced ? "held" : "missing",
     syncedAt: directory.syncedAt
   };
+}
+
+function availabilityDocId(courseId: string) {
+  return `teetimes-${courseId}`;
+}
+
+function parseAvailability(courseId: string, data: Record<string, unknown> | undefined): HeldAvailability | null {
+  if (!data || !Array.isArray(data.slots) || typeof data.syncedAt !== "string") return null;
+  const slots = data.slots.filter((slot): slot is ProposedTeeTime => {
+    if (!slot || typeof slot !== "object") return false;
+    const value = slot as ProposedTeeTime;
+    return Boolean(value.id && value.startsAt && value.label && Number.isFinite(value.spotsOpen));
+  });
+  return { courseId, syncedAt: data.syncedAt, slots };
+}
+
+export async function writeHeldAvailability(snapshot: HeldAvailability) {
+  memoryAvailability.set(snapshot.courseId, snapshot);
+  const firebase = firebaseAdmin();
+  if (!firebase) return;
+  try {
+    await firebase.db.collection("foreupHold").doc(availabilityDocId(snapshot.courseId)).set({
+      courseId: snapshot.courseId,
+      kind: "teetimes",
+      syncedAt: snapshot.syncedAt,
+      slots: snapshot.slots
+    }, { merge: true });
+  } catch (error) {
+    throw new Error(error instanceof Error ? error.message : "Unable to write the tee-time hold.");
+  }
+}
+
+export async function readHeldAvailability(courseId: string): Promise<HeldAvailability | null> {
+  const firebase = firebaseAdmin();
+  if (firebase) {
+    try {
+      const snapshot = await firebase.db.collection("foreupHold").doc(availabilityDocId(courseId)).get();
+      const held = parseAvailability(courseId, snapshot.data() as Record<string, unknown> | undefined);
+      if (held) {
+        memoryAvailability.set(courseId, held);
+        return held;
+      }
+    } catch {
+      // A hold outage must not become a silent live ForeUp read.
+    }
+  }
+  return memoryAvailability.get(courseId) ?? null;
+}
+
+export async function listHeldAvailableTeeTimes(courseId: string, query: TeeTimeQuery = {}): Promise<ProposedTeeTime[]> {
+  const held = await readHeldAvailability(courseId);
+  if (!held) return [];
+  return filterAvailableTeeTimes(held.slots, query);
 }

@@ -1,9 +1,9 @@
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { firebaseAdmin } from "@/lib/firebase-admin";
 import { defaultBotConfig } from "@/lib/bot-config";
+import { ConversationState, runConversationTurn } from "@/lib/conversation-engine";
 import { readHeldMemberDirectory } from "@/lib/foreup-hold";
 import type { ForeupCustomer } from "@/lib/foreup-adapter";
-import { createBotReply } from "@/lib/mock-data";
 import { normalizePhone, phoneMatchKey, SmsDeliveryStatus, SmsProviderId } from "@/lib/sms-provider";
 
 export type AutomationStatus = "bot_active" | "staff_paused" | "staff_owned";
@@ -33,6 +33,7 @@ export type InboxConversation = {
   lastBody?: string;
   lastMessageAt?: string;
   unread: number;
+  botState?: ConversationState;
 };
 
 type MemoryState = {
@@ -57,6 +58,13 @@ function stamp(value: unknown) {
 
 function assignedStaffUidsFrom(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.length > 0) : [];
+}
+
+function parseBotState(value: unknown): ConversationState | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const state = value as ConversationState;
+  if (!state.phase || !state.slots || typeof state.slots !== "object") return undefined;
+  return { ...state, booked: false, proposedSlots: Array.isArray(state.proposedSlots) ? state.proposedSlots : [] };
 }
 
 export function mentionsHandoff(body: string) {
@@ -109,7 +117,8 @@ export async function getOrCreateConversation(input: { memberId?: string; phone:
       ...data,
       phone: data.phone || phone,
       memberId: data.memberId || member?.id,
-      assignedStaffUids: assignedStaffUidsFrom(data.assignedStaffUids)
+      assignedStaffUids: assignedStaffUidsFrom(data.assignedStaffUids),
+      botState: parseBotState(data.botState)
     };
   }
   const created: InboxConversation = {
@@ -134,7 +143,7 @@ export async function getConversationByMemberId(memberId: string) {
   const snap = await firebase.db.collection("conversations").doc(memberId).get();
   if (!snap.exists) return null;
   const data = snap.data() as Omit<InboxConversation, "id">;
-  return { id: snap.id, ...data, assignedStaffUids: assignedStaffUidsFrom(data.assignedStaffUids) };
+  return { id: snap.id, ...data, assignedStaffUids: assignedStaffUidsFrom(data.assignedStaffUids), botState: parseBotState(data.botState) };
 }
 
 export async function listMessages(conversationId: string, limit = 100): Promise<InboxMessage[]> {
@@ -243,6 +252,29 @@ export async function setAutomationStatus(conversationId: string, automationStat
     id: conversationId,
     ...data,
     automationStatus,
+    assignedStaffUids: assignedStaffUidsFrom(data.assignedStaffUids),
+    botState: parseBotState(data.botState)
+  };
+}
+
+export async function saveConversationBotState(conversationId: string, botState: ConversationState) {
+  const firebase = firebaseAdmin();
+  if (!firebase) {
+    const existing = memory.conversations.get(conversationId);
+    if (!existing) return null;
+    const next = { ...existing, botState };
+    memory.conversations.set(conversationId, next);
+    return next;
+  }
+  const ref = firebase.db.collection("conversations").doc(conversationId);
+  const snap = await ref.get();
+  if (!snap.exists) return null;
+  await ref.set({ botState, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  const data = snap.data() as Omit<InboxConversation, "id">;
+  return {
+    id: conversationId,
+    ...data,
+    botState,
     assignedStaffUids: assignedStaffUidsFrom(data.assignedStaffUids)
   };
 }
@@ -269,8 +301,8 @@ export async function assignStaffToConversation(conversationId: string, staffUid
   return { id: conversationId, ...data, assignedStaffUids };
 }
 
-export function draftBotReply(body: string) {
-  return createBotReply(body);
+export function draftBotReply(body: string, state?: ConversationState) {
+  return runConversationTurn({ text: body, state }).reply;
 }
 
 export function staffHoldMessage() {

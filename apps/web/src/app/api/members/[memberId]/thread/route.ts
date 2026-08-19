@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { memberHoldMissingPayload, readHeldMember } from "@/lib/foreup-hold";
+import { handleCustomerMessage } from "@/lib/customer-bot";
 import {
   assignStaffToConversation,
-  draftBotReply,
   getConversationByMemberId,
   getOrCreateConversation,
   setAutomationStatus
@@ -60,10 +60,18 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const held = await heldMemberPhone(memberId);
     if ("error" in held) return held.error;
     const conversation = existing ?? await getOrCreateConversation({ memberId, phone: held.phone });
+    const turn = await handleCustomerMessage({
+      conversation,
+      body: parsed.data.body || conversation.lastBody || "tee time",
+      persist: false
+    });
     return NextResponse.json({
       connected: true,
       conversation,
-      draft: draftBotReply(parsed.data.body || conversation.lastBody || "tee time")
+      draft: turn.reply ?? "",
+      booked: false,
+      phase: turn.result.state.phase,
+      nextActions: turn.result.nextActions
     });
   }
   const canAct = parsed.data.action === "resume" || parsed.data.action === "pause" || parsed.data.action === "own"
