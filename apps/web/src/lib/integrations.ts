@@ -1,4 +1,5 @@
 import { kpiGroupCatalog } from "@/lib/authz";
+import { twilioConfigured } from "@/lib/sms-provider";
 
 export type IntegrationStatus = "connected" | "ready" | "not_connected" | "needs_review";
 
@@ -92,11 +93,11 @@ export const integrationAccounts: IntegrationAccount[] = [
     id: "int_sms",
     provider: "sms",
     label: "SMS/VoIP",
-    status: process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_FROM_NUMBER ? "connected" : "not_connected",
+    status: twilioConfigured() ? "connected" : "not_connected",
     owner: "Twilio webhook",
-    nextAction: process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_FROM_NUMBER
+    nextAction: twilioConfigured()
       ? "Point the Twilio number webhook at /api/sms/inbound."
-      : "Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_FROM_NUMBER. Threads and drafts work now; sends queue until then.",
+      : "Add Twilio account credentials and a from-number. Threads and drafts work now; sends queue until then.",
     health: "Inbox store, inbound webhook, staff pause gate, queued send"
   },
   {

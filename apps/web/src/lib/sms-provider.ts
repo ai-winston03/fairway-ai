@@ -39,12 +39,18 @@ export function phoneMatchKey(value: string) {
   return digits.slice(-10);
 }
 
+function twilioRestAuth() {
+  const apiKey = process.env.TWILIO_API_KEY;
+  const apiSecret = process.env.TWILIO_API_SECRET;
+  if (apiKey && apiSecret) return { user: apiKey, pass: apiSecret };
+  const token = process.env.TWILIO_AUTH_TOKEN;
+  const sid = process.env.TWILIO_ACCOUNT_SID;
+  if (sid && token) return { user: sid, pass: token };
+  return null;
+}
+
 export function twilioConfigured() {
-  return Boolean(
-    process.env.TWILIO_ACCOUNT_SID &&
-      process.env.TWILIO_AUTH_TOKEN &&
-      process.env.TWILIO_FROM_NUMBER
-  );
+  return Boolean(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_FROM_NUMBER && twilioRestAuth());
 }
 
 export function getSmsProviderStatus(): SmsProviderStatus {
@@ -73,15 +79,16 @@ export async function sendSms(input: SmsSendInput): Promise<SmsSendResult> {
   }
 
   const sid = process.env.TWILIO_ACCOUNT_SID!;
-  const token = process.env.TWILIO_AUTH_TOKEN!;
+  const auth = twilioRestAuth();
   const from = process.env.TWILIO_FROM_NUMBER!;
+  if (!auth) return { provider: "none", status: "queued" };
   const body = new URLSearchParams({ To: to, From: from, Body: input.body });
   if (input.statusCallback) body.set("StatusCallback", input.statusCallback);
 
   const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
     method: "POST",
     headers: {
-      Authorization: `Basic ${Buffer.from(`${sid}:${token}`).toString("base64")}`,
+      Authorization: `Basic ${Buffer.from(`${auth.user}:${auth.pass}`).toString("base64")}`,
       "Content-Type": "application/x-www-form-urlencoded"
     },
     body
