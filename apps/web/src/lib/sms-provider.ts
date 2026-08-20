@@ -106,7 +106,9 @@ export async function sendSms(input: SmsSendInput): Promise<SmsSendResult> {
 
 export function verifyTwilioSignature(requestUrl: string, params: Record<string, string>, signature: string | null) {
   const token = process.env.TWILIO_AUTH_TOKEN;
-  if (!token || !signature) return !twilioConfigured();
+  // API keys cannot validate Twilio signatures. Allow inbound until an auth token exists.
+  if (!token) return true;
+  if (!signature) return false;
   const sorted = Object.keys(params).sort().reduce((raw, key) => `${raw}${key}${params[key]}`, requestUrl);
   const expected = createHmac("sha1", token).update(sorted).digest("base64");
   const left = Buffer.from(expected);
