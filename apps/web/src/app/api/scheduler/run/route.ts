@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { syncForeupDailyHold } from "@/lib/foreup-reporting-sync";
 import { getDueScheduledMessages } from "@/lib/member-directory";
+import { PRE_TURN_SNACK_SHACK_JOB, runPreTurnSnackShackJob } from "@/lib/pre-turn-scheduler";
 import { verifiedStaff } from "@/lib/staff-access";
 
 function schedulerAuthorized(request: NextRequest) {
@@ -42,6 +43,14 @@ export async function POST(request: NextRequest) {
         ...payload
       }, { status: 502 });
     }
+  }
+
+  if (jobs.includes(PRE_TURN_SNACK_SHACK_JOB)) {
+    const courseId = process.env.FOREUP_COURSE_ID;
+    if (!courseId) {
+      return NextResponse.json({ error: "ForeUp course configuration is missing.", ...payload }, { status: 503 });
+    }
+    payload.preTurnSnackShack = await runPreTurnSnackShackJob({ courseId, now });
   }
 
   return NextResponse.json(payload);
