@@ -108,6 +108,12 @@ export type ForeupUpcomingTeeTime = {
   status: string;
 };
 
+export type ForeupTeeTimeSlot = {
+  id: string;
+  startsAt: string;
+  spotsOpen: number;
+};
+
 export class ForeupAdapter {
   constructor(private readonly config: ForeupConfig) {}
 
@@ -151,6 +157,30 @@ export class ForeupAdapter {
     const remainingStarts = Array.from({ length: Math.ceil(Math.max(0, total - 100) / 100) }, (_, index) => (index + 1) * 100);
     const remaining = await Promise.all(remainingStarts.map((start) => this.request(`/courses/${courseId}/customers?limit=100&start=${start}`, token)));
     return [firstPage, ...remaining.map((page) => Array.isArray(page.data) ? page.data : [])].flat().map(mapCustomer);
+  }
+
+  /** Official availability read. Never books. Callers persist through writeHeldAvailability. */
+  async listTeeTimes(courseId: string, teeSheetId: string, date: string, token?: string): Promise<ForeupTeeTimeSlot[]> {
+    const auth = token ?? await this.createToken();
+    const all: JsonApiResource[] = [];
+    for (let start = 0; start < 1000; start += 100) {
+      const query = new URLSearchParams({
+        date,
+        startDate: date,
+        endDate: date,
+        limit: "100",
+        start: String(start)
+      });
+      const document = await this.request(`/courses/${courseId}/teesheets/${teeSheetId}/teetimes?${query.toString()}`, auth);
+      const page = Array.isArray(document.data) ? document.data : [];
+      all.push(...page);
+      if (page.length < 100) break;
+    }
+    const mapped = mapTeeTimeResources({ data: all });
+    if (all.length > 0 && mapped.length === 0) {
+      throw new Error("ForeUp teetimes response did not include a start time and open-spot count.");
+    }
+    return mapped;
   }
 
   async createBooking(_request: BookingRequest): Promise<never> {
@@ -313,6 +343,34 @@ function summarizeGolf(today: ForeupTeeSheetStats, period: ForeupGolfSnapshot["p
  * always emit every reporting department so a quiet day is an explicit zero—not an
  * ambiguous missing row.
  */
+function teeTimeStart(attributes: Record<string, unknown>) {
+  return String(attributes.start ?? attributes.startsAt ?? attributes.startTime ?? attributes.time ?? "").trim();
+}
+
+function teeTimeSpotsOpen(attributes: Record<string, unknown>) {
+  for (const key of ["spotsOpen", "spots_open", "available_spots", "availableSpots", "slotsAvailable", "slots_available", "openSpots", "open_spots"]) {
+    if (attributes[key] == null || attributes[key] === "") continue;
+    const value = Number(attributes[key]);
+    if (Number.isFinite(value)) return value;
+  }
+  return null;
+}
+
+export function mapTeeTimeResources(document: { data?: JsonApiResource | JsonApiResource[] }): ForeupTeeTimeSlot[] {
+  const rows = Array.isArray(document.data) ? document.data : document.data ? [document.data] : [];
+  return rows.flatMap((resource) => {
+    const attributes = resource.attributes ?? {};
+    const startsAt = teeTimeStart(attributes);
+    const spotsOpen = teeTimeSpotsOpen(attributes);
+    if (!startsAt || spotsOpen == null) return [];
+    return [{
+      id: resource.id || startsAt,
+      startsAt,
+      spotsOpen
+    }];
+  });
+}
+
 export function upcomingTeeTimesByCustomer(bookings: { data: JsonApiResource[]; included: JsonApiResource[] }): Record<string, ForeupUpcomingTeeTime[]> {
   const includedByKey = new Map(bookings.included.map((item) => [`${item.type}:${item.id}`, item]));
   const byCustomer: Record<string, ForeupUpcomingTeeTime[]> = {};

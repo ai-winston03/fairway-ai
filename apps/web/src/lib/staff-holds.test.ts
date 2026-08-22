@@ -5,7 +5,7 @@ vi.mock("./sms-provider", () => ({ sendSms: vi.fn() }));
 
 import { emptyConversationState } from "./conversation-engine";
 import { sendSms } from "./sms-provider";
-import { listStaffHolds, queueStaffHold } from "./staff-holds";
+import { listStaffHolds, queueStaffHold, staffHoldSummary } from "./staff-holds";
 
 describe("staff holds queue", () => {
   it("persists booking and snack-shack holds as queued and never sends SMS", async () => {
@@ -41,5 +41,20 @@ describe("staff holds queue", () => {
     expect(listed.map((hold) => hold.kind).sort()).toEqual(["hold_request", "hold_snack_shack"]);
     expect(listed.every((hold) => hold.status === "queued")).toBe(true);
     expect(sendSms).not.toHaveBeenCalled();
+  });
+
+  it("labels a pre-turn snack-shack prompt as queued, not as an order", () => {
+    const state = emptyConversationState({
+      phoneMatched: true,
+      memberId: "3612897",
+      preTurnOutreach: {
+        teeTimeId: "2026-08-22-0820",
+        startsAt: "2026-08-22T08:20:00-05:00",
+        status: "prompted"
+      }
+    });
+    expect(staffHoldSummary("hold_snack_shack", state)).toBe(
+      "Snack shack prompt queued · 2026-08-22T08:20:00-05:00"
+    );
   });
 });

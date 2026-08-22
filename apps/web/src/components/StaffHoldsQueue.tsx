@@ -56,7 +56,7 @@ export function StaffHoldsQueue() {
           {holds.map((hold) => (
             <article className="staff-hold-card" key={hold.id}>
               <div>
-                <strong>{hold.kind === "hold_snack_shack" ? "Snack shack" : "Booking request"}</strong>
+                <strong>{holdTitle(hold)}</strong>
                 <span>{hold.summary}</span>
                 <small>{hold.phone}{hold.memberId ? ` · ${hold.memberId}` : ""} · {formatHoldTime(hold.createdAt)}</small>
               </div>
@@ -67,6 +67,13 @@ export function StaffHoldsQueue() {
       ) : null}
     </section>
   );
+}
+
+function holdTitle(hold: StaffHold) {
+  if (hold.kind !== "hold_snack_shack") return "Booking request";
+  const actions = hold.payload.nextActions ?? [];
+  if (actions.includes("pre_turn_prompt") && !hold.payload.foodAndBeverage) return "Snack shack prompt";
+  return "Snack shack";
 }
 
 function formatHoldTime(value: string) {

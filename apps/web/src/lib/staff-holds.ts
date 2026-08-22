@@ -54,12 +54,15 @@ function selectedSlot(state: ConversationState) {
 
 export function staffHoldSummary(kind: StaffHoldKind, state: ConversationState) {
   const slot = selectedSlot(state);
-  const when = slot?.startsAt ?? state.slots.date ?? "unscheduled";
+  const when = slot?.startsAt ?? state.preTurnOutreach?.startsAt ?? state.slots.date ?? "unscheduled";
   const players = state.slots.playerCount ?? 0;
   const food = state.slots.foodAndBeverage && state.slots.foodAndBeverage !== "none"
     ? state.slots.foodAndBeverage
     : "no F&B";
   if (kind === "hold_snack_shack") {
+    if (!state.slots.foodAndBeverage) {
+      return `Snack shack prompt queued · ${when}`;
+    }
     return `Snack shack hold · ${food} · ${when}`;
   }
   return `Booking hold · ${when} · ${players} player${players === 1 ? "" : "s"} · ${food}`;

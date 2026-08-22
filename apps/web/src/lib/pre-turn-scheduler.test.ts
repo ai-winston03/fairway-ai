@@ -6,6 +6,7 @@ import type { ForeupCustomer, ForeupUpcomingTeeTime } from "./foreup-adapter";
 import { writeHeldMemberDirectory } from "./foreup-hold";
 import { getOrCreateConversation, setAutomationStatus } from "./inbox-store";
 import { PRE_TURN_SNACK_SHACK_JOB, runPreTurnSnackShackJob } from "./pre-turn-scheduler";
+import { listStaffHolds } from "./staff-holds";
 
 const inWindow = new Date("2026-08-22T06:50:00-05:00");
 const tooEarly = new Date("2026-08-22T04:00:00-05:00");
@@ -106,6 +107,15 @@ describe("runPreTurnSnackShackJob", () => {
       reason: "send"
     });
     expect(result.candidates[0].message).toMatch(/snack shack at the turn/i);
+    const holds = await listStaffHolds(courseId);
+    expect(holds).toHaveLength(1);
+    expect(holds[0]).toMatchObject({
+      kind: "hold_snack_shack",
+      status: "queued",
+      memberId: "3612802",
+      summary: expect.stringMatching(/prompt queued/i)
+    });
+    expect(holds[0].payload.nextActions).toContain("pre_turn_prompt");
     expect(fetch).not.toHaveBeenCalled();
   });
 

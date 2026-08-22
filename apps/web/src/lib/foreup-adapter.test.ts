@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { foreup, summarizeCommerce, upcomingTeeTimesByCustomer } from "./foreup-adapter";
+import { foreup, mapTeeTimeResources, summarizeCommerce, upcomingTeeTimesByCustomer } from "./foreup-adapter";
 
 function salesFixture() {
   return {
@@ -44,6 +44,27 @@ describe("upcomingTeeTimesByCustomer", () => {
     });
     expect(Object.keys(byCustomer).sort()).toEqual(["3612897", "3612911", "3613024"]);
     expect(byCustomer["3612897"][0]).toMatchObject({ id: "tee_1", players: 2, carts: 1 });
+  });
+});
+
+describe("mapTeeTimeResources", () => {
+  it("maps official teetimes rows and skips incomplete ones", () => {
+    const slots = mapTeeTimeResources({
+      data: [
+        { id: "slot-1", type: "teetimes", attributes: { start: "2026-08-22T08:20:00-05:00", spotsOpen: 4 } },
+        { id: "slot-2", type: "teetimes", attributes: { startTime: "2026-08-22T08:36:00-05:00", spots_open: 2 } },
+        { id: "slot-3", type: "teetimes", attributes: { start: "2026-08-22T08:52:00-05:00" } },
+        { id: "slot-4", type: "teetimes", attributes: { spotsOpen: 3 } }
+      ]
+    });
+    expect(slots).toEqual([
+      { id: "slot-1", startsAt: "2026-08-22T08:20:00-05:00", spotsOpen: 4 },
+      { id: "slot-2", startsAt: "2026-08-22T08:36:00-05:00", spotsOpen: 2 }
+    ]);
+  });
+
+  it("returns no slots for an empty teetimes document", () => {
+    expect(mapTeeTimeResources({ data: [] })).toEqual([]);
   });
 });
 

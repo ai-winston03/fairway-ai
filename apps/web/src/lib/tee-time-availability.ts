@@ -58,6 +58,20 @@ export function productionTeeTimes(slots: ProposedTeeTime[]) {
   return slots.filter((slot) => slot.source !== "demo" && slot.spotsOpen > 0);
 }
 
+/** Maps a ForeUp teetimes row onto the held-availability slot the bot reads. */
+export function heldSlotFromTeeTime(slot: { id: string; startsAt: string; spotsOpen: number }): ProposedTeeTime | null {
+  if (!slot.startsAt || !Number.isFinite(slot.spotsOpen)) return null;
+  const clock = slotClock(slot.startsAt);
+  if (!/^\d{2}:\d{2}$/.test(clock)) return null;
+  return {
+    id: slot.id || `${slotDate(slot.startsAt)}-${clock.replace(":", "")}`,
+    startsAt: slot.startsAt,
+    label: formatSlotClock(slot.startsAt),
+    spotsOpen: slot.spotsOpen,
+    source: "hold"
+  };
+}
+
 export function filterAvailableTeeTimes(slots: ProposedTeeTime[], query: TeeTimeQuery): ProposedTeeTime[] {
   return slots
     .filter((slot) => {

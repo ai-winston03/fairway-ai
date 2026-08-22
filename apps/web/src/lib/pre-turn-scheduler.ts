@@ -6,6 +6,7 @@ import {
   minutesUntilTeeTime,
   type PreTurnOutreachReason
 } from "@/lib/pre-turn-outreach";
+import { queueStaffHold } from "@/lib/staff-holds";
 
 export const PRE_TURN_SNACK_SHACK_JOB = "pre-turn-snack-shack";
 
@@ -126,6 +127,17 @@ export async function runPreTurnSnackShackJob(
         persist,
         now
       });
+      if (persist && queued.shouldSend && queued.conversation.botState) {
+        await queueStaffHold({
+          courseId: input.courseId,
+          kind: "hold_snack_shack",
+          conversationId: queued.conversation.id,
+          memberId: customer.id,
+          phone: customer.phone,
+          state: queued.conversation.botState,
+          nextActions: ["hold_snack_shack", "pre_turn_prompt"]
+        });
+      }
       candidates.push({
         memberId: customer.id,
         teeTimeId,

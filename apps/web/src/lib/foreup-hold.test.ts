@@ -7,9 +7,11 @@ import {
   dailyHoldRange,
   enumerateIsoDays,
   holdCoverage,
+  listHeldAvailableTeeTimes,
   memberHoldMissingPayload,
   readHeldMember,
   readHeldMemberDirectory,
+  writeHeldAvailability,
   writeHeldMemberDirectory
 } from "./foreup-hold";
 import type { ForeupCustomer } from "./foreup-adapter";
@@ -95,5 +97,22 @@ describe("held member directory", () => {
     if ("missing" in profile) return;
     expect(profile.teeTimesStatus).toBe("held");
     expect(profile.teeTimes).toHaveLength(1);
+  });
+});
+
+describe("held tee-time availability", () => {
+  it("reads back written slots without a live ForeUp pull", async () => {
+    const courseId = `course-teetimes-${crypto.randomUUID()}`;
+    await writeHeldAvailability({
+      courseId,
+      syncedAt: "2026-08-22T12:00:00.000Z",
+      slots: [
+        { id: "2026-08-22-0820", startsAt: "2026-08-22T08:20:00", label: "8:20 AM", spotsOpen: 4, source: "hold" },
+        { id: "2026-08-22-0836", startsAt: "2026-08-22T08:36:00", label: "8:36 AM", spotsOpen: 0, source: "hold" }
+      ]
+    });
+    expect(await listHeldAvailableTeeTimes(courseId)).toEqual([
+      { id: "2026-08-22-0820", startsAt: "2026-08-22T08:20:00", label: "8:20 AM", spotsOpen: 4, source: "hold" }
+    ]);
   });
 });

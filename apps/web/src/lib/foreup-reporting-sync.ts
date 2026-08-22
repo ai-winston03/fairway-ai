@@ -1,8 +1,11 @@
 import { cachedForeup } from "@/lib/foreup-cache";
-import { addIsoDays, dailyHoldRange, writeHeldMemberDirectory } from "@/lib/foreup-hold";
-import { foreup, upcomingTeeTimesByCustomer } from "@/lib/foreup-adapter";
+import { addIsoDays, dailyHoldRange, writeHeldAvailability, writeHeldMemberDirectory } from "@/lib/foreup-hold";
+import { foreup, type ForeupTeeTimeSlot, upcomingTeeTimesByCustomer } from "@/lib/foreup-adapter";
 import { writeDailyCommerceMetrics, writeDailyGolfMetric } from "@/lib/golf-reporting-store";
 import { yubaToday } from "@/lib/report-period";
+import { heldSlotFromTeeTime, type ProposedTeeTime } from "@/lib/tee-time-availability";
+
+export const AVAILABILITY_HOLD_DAYS = 14;
 
 const isoDate = (date: Date) => date.toISOString().slice(0, 10);
 
@@ -51,9 +54,53 @@ export async function syncForeupMemberHold(courseId: string, teeSheetId: string,
   };
 }
 
+export async function syncForeupAvailabilityHold(
+  courseId: string,
+  teeSheetId: string,
+  today = yubaToday(),
+  input: {
+    days?: number;
+    listTeeTimes?: (courseId: string, teeSheetId: string, date: string) => Promise<ForeupTeeTimeSlot[]>;
+  } = {}
+) {
+  const days = input.days ?? AVAILABILITY_HOLD_DAYS;
+  const listTeeTimes = input.listTeeTimes ?? ((id, sheet, date) => (
+    cachedForeup(`teetimes:${id}:${sheet}:${date}`, 120_000, () => foreup.listTeeTimes(id, sheet, date))
+  ));
+  const slots: ProposedTeeTime[] = [];
+  for (let offset = 0; offset < days; offset += 1) {
+    const date = addIsoDays(today, offset);
+    const teeTimes = await listTeeTimes(courseId, teeSheetId, date);
+    const mapped = teeTimes.flatMap((slot) => {
+      const held = heldSlotFromTeeTime(slot);
+      return held ? [held] : [];
+    });
+    if (teeTimes.length > 0 && mapped.length === 0) {
+      throw new Error(`ForeUp teetimes for ${date} did not include a start time and open-spot count.`);
+    }
+    slots.push(...mapped);
+  }
+  await writeHeldAvailability({
+    courseId,
+    syncedAt: new Date().toISOString(),
+    slots
+  });
+  return {
+    days,
+    slots: slots.length,
+    openSlots: slots.filter((slot) => slot.spotsOpen > 0).length
+  };
+}
+
 export async function syncForeupDailyHold(courseId: string, teeSheetId: string, today = yubaToday()) {
   const range = dailyHoldRange(today);
   const reporting = await syncForeupReportingRange(courseId, teeSheetId, range.start, range.end);
   const members = await syncForeupMemberHold(courseId, teeSheetId, today);
-  return { range, reporting, members };
+  let availability: Awaited<ReturnType<typeof syncForeupAvailabilityHold>> | { error: string };
+  try {
+    availability = await syncForeupAvailabilityHold(courseId, teeSheetId, today);
+  } catch (error) {
+    availability = { error: error instanceof Error ? error.message : "Tee-time hold failed." };
+  }
+  return { range, reporting, members, availability };
 }
