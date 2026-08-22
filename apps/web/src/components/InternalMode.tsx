@@ -14,9 +14,9 @@ const nav: Array<{ id: OperationsArea; label: string; icon: typeof Flag; childre
   { id: "golf", label: "Golf", icon: Flag, children: ["Overview", "Member play", "Non-member play", "Tee sheet"] },
   { id: "pro-shop", label: "Pro Shop", icon: ShoppingBag, children: ["Overview", "Sales", "Inventory"] },
   { id: "clubhouse", label: "Clubhouse", icon: Utensils, children: ["Overview", "Food & beverage", "Events"] },
-  { id: "members", label: "Members", icon: Users, children: ["Directory", "Activity", "Accounts"] },
+  { id: "members", label: "Members", icon: Users, children: ["Directory", "Holds", "Activity", "Accounts"] },
   { id: "automations", label: "Automations", icon: CalendarClock, children: ["Rules", "Schedule", "History"] },
-  { id: "platform", label: "Platform", icon: Wrench, children: ["Connections", "Data sync", "Access"] }
+  { id: "platform", label: "Platform", icon: Wrench, children: ["Connections", "Data sync", "Club settings", "Access"] }
 ];
 
 export function InternalMode() {
@@ -46,8 +46,8 @@ export function InternalMode() {
         <button aria-expanded={expanded} className={activeArea === item.id ? "active" : ""} onClick={() => { setActiveArea(item.id); setActiveTab(item.children[0]); setExpandedArea(expanded ? "" as OperationsArea : item.id); }} type="button"><Icon size={17} /><span>{item.label}</span><ChevronRight className={expanded ? "rotate" : ""} size={15} /></button>
         {expanded && <div className="nav-submenu">{item.children.map((child) => <button className={activeArea === item.id && activeTab === child ? "active" : ""} key={child} onClick={() => { setActiveArea(item.id); setActiveTab(child); }} type="button">{child}</button>)}</div>}
       </div>; })}</nav>
-      <div className="workspace-nav-footer"><span><i />Live data</span><small>ForeUp · Yuba Golf Club</small></div>
+      <div className="workspace-nav-footer"><span><i />Held Firebase copy</span><small>ForeUp hold · Yuba Golf Club</small></div>
     </aside>
-    <main className="workspace-main"><header className="workspace-header"><div><div className="eyebrow">Yuba Golf Club</div><h1>Operations desk</h1></div><div><span>{user.name} · {roleLabels[user.role]}</span><button onClick={() => firebaseAuth ? void signOut(firebaseAuth) : setUser(null)} type="button"><LogOut size={15} /> Sign out</button></div></header>{activeArea === "platform" && can(user, "users:manage") ? <UserAccessManager /> : <InternalDashboard area={activeArea} requestedTab={activeTab} />}</main>
+    <main className="workspace-main"><header className="workspace-header"><div><div className="eyebrow">Yuba Golf Club</div><h1>Operations desk</h1></div><div><span>{user.name} · {roleLabels[user.role]}</span><button onClick={() => firebaseAuth ? void signOut(firebaseAuth) : setUser(null)} type="button"><LogOut size={15} /> Sign out</button></div></header>{activeArea === "platform" && activeTab === "Access" && can(user, "users:manage") ? <UserAccessManager /> : <InternalDashboard area={activeArea} requestedTab={activeTab} />}</main>
   </div>;
 }

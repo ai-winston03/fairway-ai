@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { defaultBotConfig } from "./bot-config";
+import { defaultClubSettings, DEFAULT_MEMBERS_ONLY_MESSAGE } from "./club-settings";
 import {
   classifyIntent,
   emptyConversationState,
@@ -123,15 +124,77 @@ describe("runConversationTurn", () => {
     expect(result.booked).toBe(false);
   });
 
-  it("requires a phone match before confirming a request", () => {
-    const ready = turn("Book Saturday morning for 2 with no guests, no carts, and no food", null, slots, true);
-    const selected = turn("1", ready.state, slots, true);
-    const food = selected.state.slots.foodAndBeverage ? selected : turn("no food", selected.state, slots, true);
-    const unmatched = turn("yes", food.state, slots, false);
-    expect(unmatched.state.phase).toBe("staff_hold");
-    expect(unmatched.state.handoffReason).toBe("identity");
-    expect(unmatched.booked).toBe(false);
-    expect(unmatched.reply).toMatch(/does not match/);
+  it("sends one members-only message then hard-stops a non-member forever", () => {
+    const first = turn("Book Saturday morning for 2", null, slots, false);
+    expect(first.state.phase).toBe("members_only_stop");
+    expect(first.state.membersOnlyStopped).toBe(true);
+    expect(first.shouldReply).toBe(true);
+    expect(first.reply).toBe(DEFAULT_MEMBERS_ONLY_MESSAGE);
+    expect(first.nextActions).toEqual(["members_only_stop"]);
+    expect(first.booked).toBe(false);
+
+    const second = turn("please just book it", first.state, slots, false);
+    expect(second.shouldReply).toBe(false);
+    expect(second.reply).toBe("");
+    expect(second.state.membersOnlyStopped).toBe(true);
+    expect(second.nextActions).toEqual(["members_only_stop"]);
+  });
+
+  it("answers FAQ and otherwise refers unanswered questions to the pro shop", () => {
+    const settings = {
+      ...defaultClubSettings("course-1"),
+      proShopPhone: "530-555-0199",
+      faq: [{ id: "dress", question: "What is the dress code?", answer: "Collared shirts and golf shoes.", tags: ["dress code"] }]
+    };
+    const faq = runConversationTurn({
+      text: "What is the dress code?",
+      now,
+      availableSlots: slots,
+      phoneMatched: true,
+      clubSettings: settings
+    });
+    expect(faq.reply).toBe("Collared shirts and golf shoes.");
+    expect(faq.nextActions).toContain("faq");
+
+    const unknown = runConversationTurn({
+      text: "Do you allow drones on 14?",
+      now,
+      availableSlots: slots,
+      phoneMatched: true,
+      clubSettings: settings
+    });
+    expect(unknown.reply).toMatch(/530-555-0199/);
+    expect(unknown.nextActions).toContain("refer_pro_shop");
+  });
+
+  it("offers food only during restaurant hours", () => {
+    const closed = {
+      ...defaultClubSettings("course-1"),
+      restaurantHours: {
+        open: "11:00",
+        close: "14:00",
+        timezone: "America/Chicago",
+        days: ["monday"]
+      }
+    };
+    const first = runConversationTurn({
+      text: "Book Saturday morning for 2 with no guests and 1 cart",
+      now,
+      availableSlots: slots,
+      phoneMatched: true,
+      clubSettings: closed
+    });
+    const selected = runConversationTurn({
+      text: "1",
+      state: first.state,
+      now,
+      availableSlots: slots,
+      phoneMatched: true,
+      clubSettings: closed
+    });
+    expect(selected.state.phase).toBe("confirming");
+    expect(selected.reply).not.toMatch(/food or drinks/i);
+    expect(selected.state.slots.foodAndBeverage).toBeUndefined();
   });
 
   it("confirms only as a staff hold and never sets booked", () => {

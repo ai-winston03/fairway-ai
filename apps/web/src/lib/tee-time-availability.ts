@@ -54,6 +54,10 @@ export function minutesFromClock(value: string) {
   return Number(match[1]) * 60 + Number(match[2]);
 }
 
+export function productionTeeTimes(slots: ProposedTeeTime[]) {
+  return slots.filter((slot) => slot.source !== "demo" && slot.spotsOpen > 0);
+}
+
 export function filterAvailableTeeTimes(slots: ProposedTeeTime[], query: TeeTimeQuery): ProposedTeeTime[] {
   return slots
     .filter((slot) => {

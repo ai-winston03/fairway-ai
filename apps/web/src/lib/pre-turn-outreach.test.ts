@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { defaultBotConfig } from "./bot-config";
+import { defaultClubSettings } from "./club-settings";
 import { emptyConversationState } from "./conversation-engine";
 import {
   PRE_TURN_OUTREACH_WINDOW_MINUTES,
@@ -76,6 +77,21 @@ describe("planPreTurnSnackShackOutreach", () => {
     });
     expect(later.shouldSend).toBe(true);
     expect(later.state.preTurnOutreach?.teeTimeId).toBe("2026-08-23-0904");
+  });
+
+  it("does not offer food when the restaurant is closed", () => {
+    const decision = plan({
+      clubSettings: {
+        ...defaultClubSettings("course-1"),
+        restaurantHours: {
+          open: "11:00",
+          close: "14:00",
+          timezone: "America/Chicago",
+          days: ["monday"]
+        }
+      }
+    });
+    expect(decision).toMatchObject({ shouldSend: false, reason: "restaurant_closed", message: null });
   });
 
   it("keeps prior booking slots when prompting", () => {

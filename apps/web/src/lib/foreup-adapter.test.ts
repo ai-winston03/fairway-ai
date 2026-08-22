@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { summarizeCommerce, upcomingTeeTimesByCustomer } from "./foreup-adapter";
+import { foreup, summarizeCommerce, upcomingTeeTimesByCustomer } from "./foreup-adapter";
 
 function salesFixture() {
   return {
@@ -44,5 +44,20 @@ describe("upcomingTeeTimesByCustomer", () => {
     });
     expect(Object.keys(byCustomer).sort()).toEqual(["3612897", "3612911", "3613024"]);
     expect(byCustomer["3612897"][0]).toMatchObject({ id: "tee_1", players: 2, carts: 1 });
+  });
+});
+
+describe("createBooking", () => {
+  it("stays disabled and does not post a live ForeUp booking", async () => {
+    await expect(foreup.createBooking({
+      courseId: "9039",
+      teeSheetId: "sheet-1",
+      customerId: "3612897",
+      playerCount: 2,
+      guestCount: 0,
+      requestedDate: "2026-08-22",
+      requestedWindow: "morning",
+      carts: 1
+    })).rejects.toThrow(/intentionally disabled/i);
   });
 });

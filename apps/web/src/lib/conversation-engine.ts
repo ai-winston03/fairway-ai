@@ -1,5 +1,13 @@
 import { BotBehaviorConfig, defaultBotConfig } from "@/lib/bot-config";
 import {
+  ClubSettings,
+  defaultClubSettings,
+  isRestaurantOpen,
+  matchFaq,
+  restaurantClosedReply,
+  unansweredReferral
+} from "@/lib/club-settings";
+import {
   filterAvailableTeeTimes,
   formatSlotClock,
   ProposedTeeTime,
@@ -25,6 +33,7 @@ export type ConversationPhase =
   | "pre_turn"
   | "confirming"
   | "staff_hold"
+  | "members_only_stop"
   | "complete";
 
 export type PreTurnOutreachState = {
@@ -54,6 +63,7 @@ export type ConversationState = {
   memberId?: string;
   handoffReason?: string;
   booked: false;
+  membersOnlyStopped?: boolean;
   preTurnOutreach?: PreTurnOutreachState;
 };
 
@@ -67,6 +77,7 @@ export type ConversationTurnInput = {
   phoneMatched?: boolean;
   memberId?: string;
   automationStatus?: "bot_active" | "staff_paused" | "staff_owned";
+  clubSettings?: ClubSettings;
 };
 
 export type ConversationTurnResult = {
@@ -261,12 +272,30 @@ function missingPrompt(slots: BookingSlots, config: BotBehaviorConfig): { action
   return null;
 }
 
-function addonPrompt(slots: BookingSlots, config: BotBehaviorConfig): { action: string; prompt: string } | null {
+function addonPrompt(slots: BookingSlots, config: BotBehaviorConfig, restaurantOpen: boolean): { action: string; prompt: string } | null {
   if (config.askAboutCarts && slots.cartCount == null) return { action: "ask_carts", prompt: "How many carts should I reserve? Reply 0 if you are walking." };
-  if (config.askAboutFood && !slots.foodAndBeverage) {
+  if (config.askAboutFood && restaurantOpen && !slots.foodAndBeverage) {
     return { action: "ask_food", prompt: "Any food or drinks to have ready, or reply none?" };
   }
   return null;
+}
+
+function hasExtractedSlots(extracted: Partial<BookingSlots>) {
+  return Object.values(extracted).some((value) => value !== undefined);
+}
+
+function looksLikeQuestion(text: string) {
+  return /\?/.test(text) || /\b(what|when|where|who|how|why|hours?|dress code|phone|menu)\b/i.test(text);
+}
+
+function membersOnlyStop(state: ConversationState, reply: string, alreadyStopped: boolean): ConversationTurnResult {
+  return {
+    state: { ...state, phase: "members_only_stop", membersOnlyStopped: true, booked: false },
+    reply: alreadyStopped ? "" : reply,
+    shouldReply: !alreadyStopped,
+    booked: false,
+    nextActions: ["members_only_stop"]
+  };
 }
 
 function selectedSlot(state: ConversationState) {
@@ -361,7 +390,8 @@ function matchProposedSlot(text: string, proposed: ProposedTeeTime[]) {
 
 export function runConversationTurn(input: ConversationTurnInput): ConversationTurnResult {
   const config = input.config ?? defaultBotConfig;
-  const timeZone = input.timeZone ?? "America/Chicago";
+  const clubSettings = input.clubSettings ?? defaultClubSettings();
+  const timeZone = input.timeZone ?? clubSettings.restaurantHours.timezone ?? "America/Chicago";
   const now = input.now ?? new Date();
   const previous = input.state ?? emptyConversationState({
     phoneMatched: Boolean(input.phoneMatched),
@@ -384,12 +414,21 @@ export function runConversationTurn(input: ConversationTurnInput): ConversationT
     };
   }
 
+  if (!state.phoneMatched) {
+    return membersOnlyStop(state, clubSettings.membersOnlyMessage, Boolean(state.membersOnlyStopped));
+  }
+
   const text = input.text.trim();
   const catalog = input.availableSlots ?? state.proposedSlots;
   const extracted = extractBookingSlots(text, now, timeZone);
   const intent = classifyIntent(text, config);
+  const restaurantOpen = isRestaurantOpen(clubSettings.restaurantHours, now);
+  const volunteeredFood = Boolean(extracted.foodAndBeverage && extracted.foodAndBeverage !== "none");
   state.intent = intent;
   state.slots = mergeSlots(state.slots, extracted);
+  if (!restaurantOpen && volunteeredFood) {
+    state.slots.foodAndBeverage = previous.slots.foodAndBeverage;
+  }
   if (state.phase === "addons" && state.slots.cartCount == null && /^\d+$/.test(text)) {
     state.slots.cartCount = Number(text);
   }
@@ -402,14 +441,31 @@ export function runConversationTurn(input: ConversationTurnInput): ConversationT
     return staffHold(
       state,
       "account_charge",
-      state.phoneMatched
-        ? "Account charges stay on hold for staff and a one-time code to the phone on file. I will not charge the member account from this chat."
-        : "I cannot charge an account until this phone matches the member record. Staff will verify identity before any charge.",
+      "Account charges stay on hold for staff and a one-time code to the phone on file. I will not charge the member account from this chat.",
       ["identity_hold", "staff_review"]
     );
   }
 
+  if (!hasExtractedSlots(extracted) && (intent === "unknown" || looksLikeQuestion(text))) {
+    const faq = matchFaq(text, clubSettings.faq);
+    if (faq) return replyFor(state, faq.answer, ["faq"]);
+    if (intent === "unknown" && (state.phase === "idle" || looksLikeQuestion(text))) {
+      return replyFor(state, unansweredReferral(clubSettings), ["refer_pro_shop"]);
+    }
+  }
+
+  if (!restaurantOpen && volunteeredFood && !extracted.date && extracted.playerCount == null && extracted.cartCount == null) {
+    return replyFor(state, restaurantClosedReply(clubSettings), ["restaurant_closed"]);
+  }
+
   if (state.phase === "pre_turn") {
+    if (!restaurantOpen && (volunteeredFood || intent === "confirm")) {
+      return replyFor(
+        { ...state, phase: "pre_turn" },
+        restaurantClosedReply(clubSettings),
+        ["restaurant_closed"]
+      );
+    }
     return handlePreTurnReply(state, intent);
   }
 
@@ -484,7 +540,7 @@ export function runConversationTurn(input: ConversationTurnInput): ConversationT
     }
   }
 
-  const extras = addonPrompt(state.slots, config);
+  const extras = addonPrompt(state.slots, config, restaurantOpen);
   if (extras) {
     return replyFor({ ...state, phase: "addons" }, extras.prompt, [extras.action]);
   }
@@ -494,15 +550,6 @@ export function runConversationTurn(input: ConversationTurnInput): ConversationT
       { ...state, phase: "confirming" },
       `I can send this request to the shop: ${summarizeRequest(state)}. I cannot book live or charge an account from this chat. Reply YES to hold it for staff.`,
       ["confirm_request"]
-    );
-  }
-
-  if (!state.phoneMatched) {
-    return staffHold(
-      state,
-      "identity",
-      "This phone does not match a member on file, so I will not book or charge. Staff will verify identity before anything is confirmed.",
-      ["identity_hold", "staff_review"]
     );
   }
 

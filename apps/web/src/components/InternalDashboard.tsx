@@ -2,7 +2,9 @@
 
 import { CalendarDays, ChartNoAxesCombined, CircleGauge, ClipboardList, Cloud, Flag, MessageSquareText, ReceiptText, RefreshCw, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { ClubSettingsPanel } from "@/components/ClubSettingsPanel";
 import { MemberWorkspace } from "@/components/MemberWorkspace";
+import { StaffHoldsQueue } from "@/components/StaffHoldsQueue";
 import { evaluateWorkflowSafety, workflowLibrary } from "@/lib/workflows";
 
 export type OperationsArea = "golf" | "pro-shop" | "clubhouse" | "members" | "automations" | "platform";
@@ -36,9 +38,9 @@ const areas: Record<OperationsArea, { label: string; eyebrow: string; title: str
   golf: { label: "Golf", eyebrow: "Held reporting copy", title: "Golf operations", description: "Synced tee-sheet performance, member mix, and operating health.", tabs: ["Overview", "Member play", "Non-member play", "Tee sheet"] },
   "pro-shop": { label: "Pro Shop", eyebrow: "Held reporting copy", title: "Pro shop", description: "Sales, carts, and inventory come from the scheduled ForeUp hold.", tabs: ["Overview", "Sales", "Inventory"] },
   clubhouse: { label: "Clubhouse", eyebrow: "Held reporting copy", title: "Clubhouse", description: "Food, beverage, and event operations from the scheduled ForeUp hold.", tabs: ["Overview", "Food & beverage", "Events"] },
-  members: { label: "Members", eyebrow: "Held directory", title: "Members", description: "Directory and threads read the scheduled ForeUp hold. Missing holds stay visible.", tabs: ["Directory", "Activity", "Accounts"] },
+  members: { label: "Members", eyebrow: "Held directory", title: "Members", description: "Directory and threads read the scheduled ForeUp hold. Missing holds stay visible.", tabs: ["Directory", "Holds", "Activity", "Accounts"] },
   automations: { label: "Automations", eyebrow: "Control room", title: "Automations", description: "Review approved messages and scheduled jobs before they run.", tabs: ["Rules", "Schedule", "History"] },
-  platform: { label: "Platform", eyebrow: "System", title: "Connections", description: "Service health and data-source status.", tabs: ["Connections", "Data sync", "Access"] }
+  platform: { label: "Platform", eyebrow: "System", title: "Connections", description: "Service health and data-source status.", tabs: ["Connections", "Data sync", "Club settings", "Access"] }
 };
 
 export function InternalDashboard({ area, requestedTab }: { area: OperationsArea; requestedTab?: string }) {
@@ -97,7 +99,7 @@ export function InternalDashboard({ area, requestedTab }: { area: OperationsArea
     <nav className="operations-tabs" aria-label={`${config.label} submenu`}>{config.tabs.map((tab) => <button aria-pressed={activeTab === tab} className={activeTab === tab ? "active" : ""} key={tab} onClick={() => setActiveTab(tab)} type="button">{tab}</button>)}</nav>
     {(area === "golf" || area === "pro-shop" || area === "clubhouse") && <ReportRangeControl range={rangeSelection} onRangeChange={setRangeSelection} customStart={customStart} customEnd={customEnd} setCustomStart={setCustomStart} setCustomEnd={setCustomEnd} onRefresh={() => setReloadKey((value) => value + 1)} isLoading={isLoadingGolf} updatedAt={golfUpdatedAt} />}
     {(area === "golf" || area === "pro-shop" || area === "clubhouse") && !connectionError && <HoldGapBanner coverage={area === "golf" ? golf?.coverage : commerce?.coverage} label={area === "golf" ? "Golf" : area === "pro-shop" ? "Pro shop" : "Clubhouse"} />}
-    {area === "golf" ? <GolfPanel golf={golf} error={connectionError} tab={activeTab} /> : area === "members" ? <MembersPanel /> : area === "pro-shop" || area === "clubhouse" ? <CommercePanel area={area} commerce={commerce} error={connectionError} tab={activeTab} /> : area === "automations" ? <AutomationsPanel tab={activeTab} /> : area === "platform" ? <PlatformPanel golf={golf} commerce={commerce} error={connectionError} tab={activeTab} /> : <EmptyArea area={area} tab={activeTab} />}
+    {area === "golf" ? <GolfPanel golf={golf} error={connectionError} tab={activeTab} /> : area === "members" ? <MembersPanel tab={activeTab} /> : area === "pro-shop" || area === "clubhouse" ? <CommercePanel area={area} commerce={commerce} error={connectionError} tab={activeTab} /> : area === "automations" ? <AutomationsPanel tab={activeTab} /> : area === "platform" && activeTab === "Club settings" ? <ClubSettingsPanel /> : area === "platform" ? <PlatformPanel golf={golf} commerce={commerce} error={connectionError} tab={activeTab} /> : <EmptyArea area={area} tab={activeTab} />}
   </section>;
 }
 
@@ -208,7 +210,10 @@ function SegmentSummary({ label, segment, share }: { label: string; segment: Seg
   return <article className="segment-summary"><div><span>{label}</span><strong>{segment.rounds} rounds</strong></div><div className="share-track"><i style={{ width: `${Math.round(share * 100)}%` }} /></div><dl><div><dt>Tee times</dt><dd>{segment.bookings}</dd></div><div><dt>Carts</dt><dd>{segment.carts}</dd></div><div><dt>Green fees</dt><dd>{money(segment.greenFeeRevenue)}</dd></div></dl></article>;
 }
 
-function MembersPanel() { return <MemberWorkspace />; }
+function MembersPanel({ tab }: { tab: string }) {
+  if (tab === "Holds") return <StaffHoldsQueue />;
+  return <MemberWorkspace />;
+}
 
 function AutomationsPanel({ tab }: { tab: string }) {
   const active = workflowLibrary.filter((workflow) => workflow.status === "active");

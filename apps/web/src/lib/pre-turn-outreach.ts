@@ -1,4 +1,5 @@
 import { BotBehaviorConfig, defaultBotConfig } from "@/lib/bot-config";
+import { ClubSettings, defaultClubSettings, isRestaurantOpen } from "@/lib/club-settings";
 import {
   ConversationState,
   emptyConversationState
@@ -15,7 +16,8 @@ export type PreTurnOutreachReason =
   | "too_early"
   | "after_the_turn"
   | "already_sent"
-  | "missing_tee_time";
+  | "missing_tee_time"
+  | "restaurant_closed";
 
 export type PreTurnTeeTime = {
   id: string;
@@ -31,6 +33,7 @@ export type PreTurnOutreachInput = {
   member?: { optOutText?: boolean } | null;
   now?: Date;
   config?: BotBehaviorConfig;
+  clubSettings?: ClubSettings;
   timeZone?: string;
 };
 
@@ -87,6 +90,8 @@ export function planPreTurnSnackShackOutreach(input: PreTurnOutreachInput): PreT
   if (minutesUntil <= 0) return skip("after_the_turn");
   if (minutesUntil > PRE_TURN_OUTREACH_WINDOW_MINUTES) return skip("too_early");
   if (state.preTurnOutreach?.teeTimeId === teeTime.id) return skip("already_sent");
+  const clubSettings = input.clubSettings ?? defaultClubSettings();
+  if (!isRestaurantOpen(clubSettings.restaurantHours, now)) return skip("restaurant_closed");
 
   const next: ConversationState = {
     ...state,

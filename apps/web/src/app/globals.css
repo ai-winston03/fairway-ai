@@ -839,7 +839,8 @@ a {
 
 .composer input,
 .field input,
-.field select {
+.field select,
+.field textarea {
   width: 100%;
   min-height: 42px;
   padding: 0 12px;
@@ -853,6 +854,7 @@ a {
 .composer input:focus,
 .field input:focus,
 .field select:focus,
+.field textarea:focus,
 .button:focus-visible,
 .toggle:focus-visible,
 .workflow-tab:focus-visible,
@@ -942,9 +944,21 @@ a {
 }
 
 .field input,
-.field select {
+.field select,
+.field textarea {
   color: var(--ink);
   font-weight: 650;
+}
+
+.field textarea {
+  width: 100%;
+  min-height: 88px;
+  padding: 10px 12px;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  outline: none;
+  resize: vertical;
 }
 
 .security-note {
@@ -2567,4 +2581,106 @@ a {
   .sms-state { color: #a9f2c7 !important; background: #123d2a !important; border-color: #2d7d55 !important; }
   .sms-state.blocked,
   .login-error { color: #ffb5ad !important; background: #482320 !important; border-color: #8e4e48 !important; }
+}
+
+.club-settings,
+.staff-holds {
+  margin-top: 14px;
+}
+
+.club-settings-grid {
+  padding: 0 0 16px;
+}
+
+.club-settings-message {
+  grid-column: 1 / -1;
+}
+
+.club-settings-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.club-settings-days legend {
+  padding: 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.club-settings-days label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink);
+  font-size: 13px;
+  text-transform: capitalize;
+}
+
+.club-settings-faq {
+  display: grid;
+  gap: 12px;
+}
+
+.club-faq-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  background: #fffdf8;
+  border: 1px solid #e8dfce;
+  border-radius: 10px;
+}
+
+.club-settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.staff-hold-list {
+  display: grid;
+  gap: 10px;
+  padding: 16px 0 8px;
+}
+
+.staff-hold-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  background: #fffdf8;
+  border: 1px solid #e8dfce;
+  border-radius: 10px;
+}
+
+.staff-hold-card strong,
+.staff-hold-card span,
+.staff-hold-card small {
+  display: block;
+}
+
+.staff-hold-card span {
+  margin-top: 4px;
+  color: #234354;
+  font-size: 13px;
+}
+
+.staff-hold-card small {
+  margin-top: 6px;
+  color: #63808b;
+}
+
+.staff-hold-card em {
+  flex: 0 0 auto;
+  color: #17704a;
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 800;
 }

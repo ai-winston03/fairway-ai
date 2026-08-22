@@ -1,4 +1,6 @@
 import { BotBehaviorConfig, defaultBotConfig } from "@/lib/bot-config";
+import { ClubSettings, defaultClubSettings } from "@/lib/club-settings";
+import { readClubSettings } from "@/lib/club-settings-store";
 import {
   ConversationState,
   ConversationTurnResult,
@@ -17,7 +19,8 @@ import {
   PreTurnOutreachReason,
   PreTurnTeeTime
 } from "@/lib/pre-turn-outreach";
-import { demoAvailableTeeTimes, ProposedTeeTime } from "@/lib/tee-time-availability";
+import { holdKindFromActions, queueStaffHold } from "@/lib/staff-holds";
+import { demoAvailableTeeTimes, productionTeeTimes, ProposedTeeTime } from "@/lib/tee-time-availability";
 
 export type CustomerBotTurnInput = {
   conversation: InboxConversation;
@@ -26,6 +29,7 @@ export type CustomerBotTurnInput = {
   now?: Date;
   slots?: ProposedTeeTime[];
   useDemoSlots?: boolean;
+  clubSettings?: ClubSettings;
 };
 
 export type CustomerBotTurn = {
@@ -42,6 +46,7 @@ export type PreTurnOutreachQueueInput = {
   persist?: boolean;
   now?: Date;
   config?: BotBehaviorConfig;
+  clubSettings?: ClubSettings;
 };
 
 export type PreTurnOutreachQueueResult = {
@@ -87,7 +92,8 @@ export async function handleCustomerMessage(input: CustomerBotTurnInput): Promis
   }
 
   const courseId = process.env.FOREUP_COURSE_ID;
-  const heldSlots = input.slots ?? (courseId ? await listHeldAvailableTeeTimes(courseId) : []);
+  const clubSettings = input.clubSettings ?? (courseId ? await readClubSettings(courseId) : defaultClubSettings());
+  const heldSlots = productionTeeTimes(input.slots ?? (courseId ? await listHeldAvailableTeeTimes(courseId) : []));
   const availableSlots = heldSlots.length > 0
     ? heldSlots
     : input.useDemoSlots
@@ -99,6 +105,7 @@ export async function handleCustomerMessage(input: CustomerBotTurnInput): Promis
     state,
     now: input.now,
     config: defaultBotConfig,
+    clubSettings,
     availableSlots,
     phoneMatched,
     memberId,
@@ -115,6 +122,18 @@ export async function handleCustomerMessage(input: CustomerBotTurnInput): Promis
       conversation = await setAutomationStatus(conversation.id, "staff_paused") ?? conversation;
     }
     conversation = await saveConversationBotState(conversation.id, result.state) ?? conversation;
+    const holdKind = courseId ? holdKindFromActions(result.nextActions) : null;
+    if (courseId && holdKind) {
+      await queueStaffHold({
+        courseId,
+        kind: holdKind,
+        conversationId: conversation.id,
+        memberId: conversation.memberId,
+        phone: conversation.phone,
+        state: result.state,
+        nextActions: result.nextActions
+      });
+    }
   }
 
   return {
@@ -130,12 +149,15 @@ export async function queuePreTurnSnackShackPrompt(input: PreTurnOutreachQueueIn
   const member = input.member !== undefined
     ? input.member
     : await findMemberByPhone(input.conversation.phone);
+  const courseId = process.env.FOREUP_COURSE_ID;
+  const clubSettings = input.clubSettings ?? (courseId ? await readClubSettings(courseId) : defaultClubSettings());
   const decision = planPreTurnSnackShackOutreach({
     teeTime: input.teeTime,
     conversation: input.conversation,
     member,
     now: input.now,
-    config: input.config ?? defaultBotConfig
+    config: input.config ?? defaultBotConfig,
+    clubSettings
   });
 
   let conversation = input.conversation;

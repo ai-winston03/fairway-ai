@@ -3,9 +3,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("./firebase-admin", () => ({ firebaseAdmin: () => null }));
 
 import { handleCustomerMessage, queuePreTurnSnackShackPrompt } from "./customer-bot";
+import { DEFAULT_MEMBERS_ONLY_MESSAGE } from "./club-settings";
 import type { ForeupCustomer } from "./foreup-adapter";
 import { writeHeldAvailability, writeHeldMemberDirectory } from "./foreup-hold";
 import { findMemberByPhone, getOrCreateConversation, setAutomationStatus } from "./inbox-store";
+import { listStaffHolds } from "./staff-holds";
 import { makeTeeTime } from "./tee-time-availability";
 
 const courseId = `course-bot-${crypto.randomUUID()}`;
@@ -141,10 +143,79 @@ describe("customer bot phone match and persistence", () => {
   });
 
   it("pauses the bot on a handoff keyword", async () => {
-    const conversation = await getOrCreateConversation({ phone: "+18015550002" });
+    const conversation = await getOrCreateConversation({ phone: memberPhone });
     const turn = await handleCustomerMessage({ conversation, body: "I need a manager" });
     expect(turn.shouldReply).toBe(true);
     expect(turn.conversation.automationStatus).toBe("staff_paused");
     expect(turn.result.state.phase).toBe("staff_hold");
+  });
+
+  it("hard-stops a non-member after one members-only message", async () => {
+    const conversation = await getOrCreateConversation({ phone: "+18015550999" });
+    const first = await handleCustomerMessage({ conversation, body: "Book Saturday" });
+    expect(first.shouldReply).toBe(true);
+    expect(first.reply).toBe(DEFAULT_MEMBERS_ONLY_MESSAGE);
+    expect(first.conversation.botState?.membersOnlyStopped).toBe(true);
+    const second = await handleCustomerMessage({
+      conversation: first.conversation,
+      body: "I am a member, book me"
+    });
+    expect(second.shouldReply).toBe(false);
+    expect(second.reply).toBeNull();
+  });
+
+  it("does not offer demo tee times when the hold is empty", async () => {
+    await writeHeldAvailability({ courseId, syncedAt: "2026-08-18T12:00:00.000Z", slots: [] });
+    const existing = await getOrCreateConversation({ phone: memberPhone });
+    const turn = await handleCustomerMessage({
+      conversation: { ...existing, automationStatus: "bot_active", botState: undefined },
+      body: "Book Saturday morning for 2 with no guests",
+      now: new Date("2026-08-18T18:32:00-05:00"),
+      persist: false
+    });
+    expect(turn.result.state.phase).toBe("staff_hold");
+    expect(turn.result.state.handoffReason).toBe("no_slots");
+    expect(turn.result.state.proposedSlots).toEqual([]);
+    expect(turn.result.reply).not.toMatch(/8:20 AM/);
+  });
+
+  it("queues booking and snack-shack holds without marking them sent", async () => {
+    const existing = await getOrCreateConversation({ phone: memberPhone });
+    const active = await setAutomationStatus(existing.id, "bot_active");
+    const conversation = { ...(active ?? existing), automationStatus: "bot_active" as const, botState: undefined };
+    const now = new Date("2026-08-18T18:32:00-05:00");
+    let current = await handleCustomerMessage({
+      conversation,
+      body: "Book Saturday morning for 2 with no guests and no carts",
+      now
+    });
+    current = await handleCustomerMessage({ conversation: current.conversation, body: "1", now });
+    current = await handleCustomerMessage({ conversation: current.conversation, body: "no food", now });
+    current = await handleCustomerMessage({ conversation: current.conversation, body: "yes", now });
+    expect(current.result.nextActions).toEqual(["hold_request"]);
+
+    const prompted = await queuePreTurnSnackShackPrompt({
+      conversation: {
+        ...current.conversation,
+        botState: {
+          ...current.conversation.botState!,
+          preTurnOutreach: undefined,
+          phase: "complete"
+        }
+      },
+      teeTime: { id: `hold-test-${crypto.randomUUID()}`, startsAt: "2026-08-22T08:20:00-05:00" },
+      now: new Date("2026-08-22T06:50:00-05:00")
+    });
+    const snack = await handleCustomerMessage({
+      conversation: prompted.conversation,
+      body: "two hot dogs",
+      now: new Date("2026-08-22T06:51:00-05:00")
+    });
+    expect(snack.result.nextActions).toContain("hold_snack_shack");
+
+    const holds = await listStaffHolds(courseId);
+    expect(holds.some((hold) => hold.kind === "hold_request" && hold.status === "queued")).toBe(true);
+    expect(holds.some((hold) => hold.kind === "hold_snack_shack" && hold.status === "queued")).toBe(true);
+    expect(holds.every((hold) => hold.status === "queued")).toBe(true);
   });
 });
