@@ -53,6 +53,20 @@ export function twilioConfigured() {
   return Boolean(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_FROM_NUMBER && twilioRestAuth());
 }
 
+export function smsAllowlist() {
+  return (process.env.FAIRWAY_SMS_ALLOWLIST ?? "")
+    .split(/[\s,]+/)
+    .map(normalizePhone)
+    .filter(Boolean);
+}
+
+export function smsDestinationAllowed(to: string) {
+  const allow = smsAllowlist();
+  if (allow.length === 0) return false;
+  const dest = phoneMatchKey(to);
+  return Boolean(dest) && allow.some((entry) => phoneMatchKey(entry) === dest);
+}
+
 export function getSmsProviderStatus(): SmsProviderStatus {
   if (twilioConfigured()) {
     return {
@@ -74,6 +88,9 @@ export function getSmsProviderStatus(): SmsProviderStatus {
 export async function sendSms(input: SmsSendInput): Promise<SmsSendResult> {
   const to = normalizePhone(input.to);
   if (!to) return { provider: "none", status: "failed", error: "Destination phone is missing." };
+  if (!smsDestinationAllowed(to)) {
+    return { provider: "none", status: "queued" };
+  }
   if (!twilioConfigured()) {
     return { provider: "none", status: "queued" };
   }

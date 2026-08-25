@@ -9,7 +9,9 @@ Use this page when you need the dark Fairway customer bot to read club settings,
 3. Review queued booking and snack-shack work from **Members** > **Holds**.
 4. Offer held tee times from `foreupHold/teetimes-{courseId}` after the App Hosting `foreup-hold` job writes them.
 
-The bot does not send customer SMS from this queue. `createBooking` still throws. Interactive paths do not pull live ForeUp.
+The hold queue does not send customer SMS. `createBooking` still throws. Interactive paths do not pull live ForeUp.
+
+Closed SMS test: `sendSms` only delivers when `FAIRWAY_SMS_ALLOWLIST` contains the destination. An empty allowlist sends nobody. This is not a public launch.
 
 ## Club settings
 

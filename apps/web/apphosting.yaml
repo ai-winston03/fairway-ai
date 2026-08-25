@@ -9,6 +9,9 @@ env:
   - variable: FAIRWAY_AI_BASE_URL
     value: https://fairway-ai--fairway-ai-yuba.us-central1.hosted.app
     availability: [RUNTIME]
+  - variable: FAIRWAY_SMS_ALLOWLIST
+    value: "+14795798818"
+    availability: [RUNTIME]
   - variable: FOREUP_BASE_URL
     value: https://api.foreupsoftware.com/api_rest/index.php
     availability: [RUNTIME]

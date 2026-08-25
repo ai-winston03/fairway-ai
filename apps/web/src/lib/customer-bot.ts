@@ -20,6 +20,7 @@ import {
   PreTurnTeeTime
 } from "@/lib/pre-turn-outreach";
 import { holdKindFromActions, queueStaffHold } from "@/lib/staff-holds";
+import { smsDestinationAllowed } from "@/lib/sms-provider";
 import { demoAvailableTeeTimes, productionTeeTimes, ProposedTeeTime } from "@/lib/tee-time-availability";
 
 export type CustomerBotTurnInput = {
@@ -69,7 +70,7 @@ function pausedResult(state: ConversationState | undefined, phoneMatched: boolea
 export async function handleCustomerMessage(input: CustomerBotTurnInput): Promise<CustomerBotTurn> {
   const persist = input.persist !== false;
   const member = await findMemberByPhone(input.conversation.phone);
-  const phoneMatched = Boolean(member);
+  const phoneMatched = Boolean(member) || smsDestinationAllowed(input.conversation.phone);
   const memberId = member?.id ?? input.conversation.memberId;
   const state = input.conversation.botState;
 
