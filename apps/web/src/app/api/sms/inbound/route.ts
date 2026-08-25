@@ -4,7 +4,7 @@ import {
   appendMessage,
   getOrCreateConversation
 } from "@/lib/inbox-store";
-import { getSmsProviderStatus, sendSms, twilioConfigured, verifyTwilioSignature } from "@/lib/sms-provider";
+import { getSmsProviderStatus, sendSms, smsDestinationAllowed, twilioConfigured, verifyTwilioSignature } from "@/lib/sms-provider";
 import { verifiedStaff } from "@/lib/staff-access";
 
 function twiml(message?: string) {
@@ -42,6 +42,7 @@ export async function POST(request: NextRequest) {
   const body = (params.Body || "").trim();
   const sid = params.MessageSid;
   if (!from || !body) return twiml();
+  if (!smsDestinationAllowed(from)) return twiml();
 
   let conversation = await getOrCreateConversation({ phone: from });
   const inbound = await appendMessage({

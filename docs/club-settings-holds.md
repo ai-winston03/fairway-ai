@@ -1,6 +1,6 @@
 # Club settings and staff holds
 
-Use this page when you need the dark Fairway customer bot to read club settings, refuse non-members, and queue staff work from Firebase. This is not a live booking or SMS launch.
+Use this page when you need the dark Fairway customer bot to read club settings, refuse non-members, and queue staff work from Firebase. This is a closed SMS test, not a live booking or public SMS launch.
 
 ## What you can do now
 
@@ -8,10 +8,19 @@ Use this page when you need the dark Fairway customer bot to read club settings,
 2. Edit the pro shop phone, restaurant hours, FAQ, and members-only message from **Platform** > **Club settings**.
 3. Review queued booking and snack-shack work from **Members** > **Holds**.
 4. Offer held tee times from `foreupHold/teetimes-{courseId}` after the App Hosting `foreup-hold` job writes them.
+5. Send SMS only to numbers listed in `FAIRWAY_SMS_ALLOWLIST`.
 
 The hold queue does not send customer SMS. `createBooking` still throws. Interactive paths do not pull live ForeUp.
 
-Closed SMS test: `sendSms` only delivers when `FAIRWAY_SMS_ALLOWLIST` contains the destination. An empty allowlist sends nobody. This is not a public launch.
+## Closed SMS test
+
+Fairway sends SMS only to numbers listed in `FAIRWAY_SMS_ALLOWLIST`. The hosted allowlist is `+14795798818`.
+
+If `FAIRWAY_SMS_ALLOWLIST` is unset or empty, `sendSms` returns `queued` and does not call Twilio. If the destination is not on the allowlist, Fairway does not send.
+
+If someone texts the Fairway Twilio number from any other phone, Fairway does not send a reply. Staff message send uses the same allowlist.
+
+This is not a public launch.
 
 ## Club settings
 
@@ -42,7 +51,7 @@ Cart and snack-shack sales stay in the staff hold. Fairway does not POST a live 
 
 ## Named blockers
 
-- Live ForeUp booking creation remains disabled.
-- Customer SMS is not enabled from the staff-hold queue.
-- This page does not claim a live public launch.
+- Live ForeUp booking creation remains disabled. `createBooking` still throws.
+- Customer SMS is a closed allowlist test. This is not a public launch.
+- The staff-hold queue does not send customer SMS.
 - Cloud Scheduler must call the hosted `/api/scheduler/run` job. This workspace does not run `foreup:hold`.

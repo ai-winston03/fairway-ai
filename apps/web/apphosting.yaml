@@ -12,6 +12,24 @@ env:
   - variable: FAIRWAY_SMS_ALLOWLIST
     value: "+14795798818"
     availability: [RUNTIME]
+  - variable: TWILIO_ACCOUNT_SID
+    secret: TWILIO_ACCOUNT_SID
+    availability: [RUNTIME]
+  - variable: TWILIO_AUTH_TOKEN
+    secret: TWILIO_AUTH_TOKEN
+    availability: [RUNTIME]
+  - variable: TWILIO_API_KEY
+    secret: TWILIO_API_KEY
+    availability: [RUNTIME]
+  - variable: TWILIO_API_SECRET
+    secret: TWILIO_API_SECRET
+    availability: [RUNTIME]
+  - variable: TWILIO_FROM_NUMBER
+    secret: TWILIO_FROM_NUMBER
+    availability: [RUNTIME]
+  - variable: TWILIO_WEBHOOK_URL
+    secret: TWILIO_WEBHOOK_URL
+    availability: [RUNTIME]
   - variable: FOREUP_BASE_URL
     value: https://api.foreupsoftware.com/api_rest/index.php
     availability: [RUNTIME]
