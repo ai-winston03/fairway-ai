@@ -44,32 +44,45 @@ export async function POST(request: NextRequest) {
   if (!from || !body) return twiml();
   if (!smsDestinationAllowed(from)) return twiml();
 
-  let conversation = await getOrCreateConversation({ phone: from });
-  const inbound = await appendMessage({
-    conversation,
-    direction: "inbound",
-    author: "member",
-    body,
-    status: "received",
-    provider: "twilio",
-    providerSid: sid
-  });
-  conversation = inbound.conversation;
+  try {
+    let conversation = await getOrCreateConversation({ phone: from });
+    const inbound = await appendMessage({
+      conversation,
+      direction: "inbound",
+      author: "member",
+      body,
+      status: "received",
+      provider: "twilio",
+      providerSid: sid
+    });
+    conversation = inbound.conversation;
 
-  const turn = await handleCustomerMessage({ conversation, body });
-  if (!turn.shouldReply || !turn.reply) return twiml();
+    let turn;
+    try {
+      turn = await handleCustomerMessage({ conversation, body });
+    } catch {
+      turn = await handleCustomerMessage({ conversation, body, persist: false });
+    }
+    if (!turn.shouldReply || !turn.reply) return twiml();
 
-  const sent = await sendSms({ to: turn.conversation.phone, body: turn.reply });
-  await appendMessage({
-    conversation: turn.conversation,
-    direction: "outbound",
-    author: "bot",
-    body: turn.reply,
-    status: sent.status,
-    provider: sent.provider,
-    providerSid: sent.sid
-  });
-  return twiml();
+    const sent = await sendSms({ to: turn.conversation.phone, body: turn.reply });
+    try {
+      await appendMessage({
+        conversation: turn.conversation,
+        direction: "outbound",
+        author: "bot",
+        body: turn.reply,
+        status: sent.status,
+        provider: sent.provider,
+        providerSid: sent.sid
+      });
+    } catch {
+      // Reply already handed to Twilio. Do not 500 the webhook.
+    }
+    return twiml();
+  } catch {
+    return twiml();
+  }
 }
 
 export async function GET(request: NextRequest) {

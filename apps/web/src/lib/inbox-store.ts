@@ -91,36 +91,6 @@ export async function getOrCreateConversation(input: { memberId?: string; phone:
     ? { id: input.memberId, phone }
     : await findMemberByPhone(phone);
   const id = member?.id || `phone_${phoneMatchKey(phone) || phone.replace(/\D/g, "")}`;
-  const firebase = firebaseAdmin();
-  if (!firebase) {
-    const existing = memory.conversations.get(id);
-    if (existing) return existing;
-    const created: InboxConversation = {
-      id,
-      memberId: member?.id,
-      phone: member?.phone ? normalizePhone(member.phone) : phone,
-      automationStatus: "bot_active",
-      assignedStaffUids: [],
-      unread: 0
-    };
-    memory.conversations.set(id, created);
-    memory.messages.set(id, []);
-    return created;
-  }
-
-  const ref = firebase.db.collection("conversations").doc(id);
-  const snap = await ref.get();
-  if (snap.exists) {
-    const data = snap.data() as Omit<InboxConversation, "id">;
-    return {
-      id,
-      ...data,
-      phone: data.phone || phone,
-      memberId: data.memberId || member?.id,
-      assignedStaffUids: assignedStaffUidsFrom(data.assignedStaffUids),
-      botState: parseBotState(data.botState)
-    };
-  }
   const created: InboxConversation = {
     id,
     memberId: member?.id,
@@ -129,12 +99,40 @@ export async function getOrCreateConversation(input: { memberId?: string; phone:
     assignedStaffUids: [],
     unread: 0
   };
-  await ref.set({
-    ...created,
-    createdAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp()
-  });
-  return created;
+  const memoryConversation = () => {
+    const existing = memory.conversations.get(id);
+    if (existing) return existing;
+    memory.conversations.set(id, created);
+    memory.messages.set(id, []);
+    return created;
+  };
+
+  const firebase = firebaseAdmin();
+  if (!firebase) return memoryConversation();
+
+  try {
+    const ref = firebase.db.collection("conversations").doc(id);
+    const snap = await ref.get();
+    if (snap.exists) {
+      const data = snap.data() as Omit<InboxConversation, "id">;
+      return {
+        id,
+        ...data,
+        phone: data.phone || phone,
+        memberId: data.memberId || member?.id,
+        assignedStaffUids: assignedStaffUidsFrom(data.assignedStaffUids),
+        botState: parseBotState(data.botState)
+      };
+    }
+    await ref.set({
+      ...created,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp()
+    });
+    return created;
+  } catch {
+    return memoryConversation();
+  }
 }
 
 export async function getConversationByMemberId(memberId: string) {

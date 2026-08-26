@@ -9,16 +9,24 @@ import { connectorConfig } from "@dataconnect/admin-generated";
  * are only for local development with a service account; neither belongs in
  * the browser bundle.
  */
+export function resolveAdminProjectId() {
+  return process.env.FIREBASE_ADMIN_PROJECT_ID
+    || process.env.GOOGLE_CLOUD_PROJECT
+    || process.env.GCLOUD_PROJECT
+    || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID
+    || "";
+}
+
 function adminApp() {
   if (getApps().length) return getApps()[0];
 
-  const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID;
+  const projectId = resolveAdminProjectId();
   const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL;
   const privateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, "\n");
   return initializeApp(
     projectId && clientEmail && privateKey
-      ? { credential: cert({ projectId, clientEmail, privateKey }) }
-      : { credential: applicationDefault() }
+      ? { credential: cert({ projectId, clientEmail, privateKey }), projectId }
+      : { credential: applicationDefault(), ...(projectId ? { projectId } : {}) }
   );
 }
 
