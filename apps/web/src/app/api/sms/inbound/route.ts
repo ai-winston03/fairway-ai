@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { handleCustomerMessage } from "@/lib/customer-bot";
 import {
   appendMessage,
-  getOrCreateConversation
+  getOrCreateConversation,
+  type InboxConversation
 } from "@/lib/inbox-store";
-import { getSmsProviderStatus, sendSms, smsDestinationAllowed, twilioConfigured, verifyTwilioSignature } from "@/lib/sms-provider";
+import { getSmsProviderStatus, sendSms, smsDestinationAllowed, twilioConfigured, verifyTwilioSignature, type SmsSendResult } from "@/lib/sms-provider";
 import { verifiedStaff } from "@/lib/staff-access";
 
 function twiml(message?: string) {
@@ -44,8 +45,22 @@ export async function POST(request: NextRequest) {
   if (!from || !body) return twiml();
   if (!smsDestinationAllowed(from)) return twiml();
 
+  const fallbackConversation: InboxConversation = {
+    id: `phone_${from.replace(/\D/g, "").slice(-10) || "unknown"}`,
+    phone: from,
+    automationStatus: "bot_active",
+    assignedStaffUids: [],
+    unread: 0
+  };
+
+  let conversation: InboxConversation = fallbackConversation;
   try {
-    let conversation = await getOrCreateConversation({ phone: from });
+    conversation = await getOrCreateConversation({ phone: from });
+  } catch {
+    conversation = fallbackConversation;
+  }
+
+  try {
     const inbound = await appendMessage({
       conversation,
       direction: "inbound",
@@ -56,33 +71,41 @@ export async function POST(request: NextRequest) {
       providerSid: sid
     });
     conversation = inbound.conversation;
-
-    let turn;
-    try {
-      turn = await handleCustomerMessage({ conversation, body });
-    } catch {
-      turn = await handleCustomerMessage({ conversation, body, persist: false });
-    }
-    if (!turn.shouldReply || !turn.reply) return twiml();
-
-    const sent = await sendSms({ to: turn.conversation.phone, body: turn.reply });
-    try {
-      await appendMessage({
-        conversation: turn.conversation,
-        direction: "outbound",
-        author: "bot",
-        body: turn.reply,
-        status: sent.status,
-        provider: sent.provider,
-        providerSid: sent.sid
-      });
-    } catch {
-      // Reply already handed to Twilio. Do not 500 the webhook.
-    }
-    return twiml();
   } catch {
+    // Keep the turn even if inbox persist fails.
+  }
+
+  let turn;
+  try {
+    turn = await handleCustomerMessage({ conversation, body });
+  } catch {
+    turn = await handleCustomerMessage({ conversation, body, persist: false });
+  }
+  if (!turn.shouldReply || !turn.reply) return twiml();
+
+  const sent: SmsSendResult = await sendSms({ to: turn.conversation.phone || from, body: turn.reply }).catch((): SmsSendResult => ({
+    provider: "none",
+    status: "failed"
+  }));
+  try {
+    await appendMessage({
+      conversation: turn.conversation,
+      direction: "outbound",
+      author: "bot",
+      body: turn.reply,
+      status: sent.status,
+      provider: sent.provider,
+      providerSid: sent.sid
+    });
+  } catch {
+    // Delivery does not depend on inbox persist.
+  }
+  // If REST send did not create a Twilio message, put the reply in TwiML
+  // so the inbound webhook still delivers one text.
+  if (sent.sid || sent.status === "sent" || sent.status === "queued" && sent.provider === "twilio") {
     return twiml();
   }
+  return twiml(turn.reply);
 }
 
 export async function GET(request: NextRequest) {
