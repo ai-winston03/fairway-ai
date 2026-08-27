@@ -1,4 +1,4 @@
-use client";
+"use client";
 
 import { CalendarDays, ChartNoAxesCombined, CircleGauge, ClipboardList, Cloud, Flag, MessageSquareText, ReceiptText, RefreshCw, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -92,8 +92,22 @@ export function InternalDashboard({ area, requestedTab }: { area: OperationsArea
   return <section className="operations-dashboard" aria-label={`${config.label} workspace`}>
     <header className="operations-hero"><div><div className="eyebrow">{config.eyebrow}</div><h2>{config.title}</h2><p>{config.description}</p></div><div className="connection-badge warning"><span />{reportingHero || area === "platform" ? "Held copy" : "Held directory"}</div></header>
     <nav className="operations-tabs" aria-label={`${config.label} submenu`}>{config.tabs.map((tab) => <button aria-pressed={activeTab === tab} className={activeTab === tab ? "active" : ""} key={tab} onClick={() => setActiveTab(tab)} type="button">{tab}</button>)}</nav>
-    {reportingHero && <ReportRangeControl range={rangeSelection} onRangeChange={setRangeSelection} customStart={customStart} customEnd={customEnd} setCustomStart={setCustomStart} setCustomEnd={setCustomEnd} onRefresh={() => setReloadKey((value) => value + 1)} isLoading={isLoadingGolf} updatedAt={golfUpdatedAt} />}
-    {reportingHero && !connectionError && <HoldGapBanner coverage={area === "golf" ? golf?.coverage : commerce?.coverage} label={area === "golf" ? "Golf" : area === "pro-shop" ? "Pro shop" : "Clubhouse"} loadedEmpty={!isLoadingGolf && (area === "golf" ? !golf : !commerce)} />}
-    {area === "golf" ? <GolfPanel golf={golf} error={connectionError} tab={activeTab} loading={isLoadingGolf} /> : area === "members" ? <MembersPanel tab={activeTab} /> : area === "pro-shop" || area === "clubhouse" ? <CommercePanel area={area} commerce={commerce} error={connectionError} tab={activeTab} loading={isLoadingGolf} /> : area === "automations" ? <AutomationsPanel tab={activeTab} /> : area === "platform" && activeTab === "Club settings" ? <ClubSettingsPanel /> : area === "platform" ? <PlatformPanel golf={golf} commerce={commerce} error={connectionError} tab={activeTab} /> : <EmptyArea area={area} tab={activeTab} />}
+    {area === "members" ? <MembersPanel tab={activeTab} /> : area === "platform" && activeTab === "Club settings" ? <ClubSettingsPanel /> : area === "golf" ? <GolfOverview golf={golf} error={connectionError} loading={isLoadingGolf} /> : <section className="empty-area"><Flag size={24} /><strong>{config.title}</strong><span>Held-copy workspace for {activeTab}.</span></section>}
   </section>;
 }
+
+function MembersPanel({ tab }: { tab: string }) {
+  if (tab === "Holds") return <StaffHoldsQueue />;
+  return <MemberWorkspace />;
+}
+
+function GolfOverview({ golf, error, loading }: { golf: GolfSnapshot | null; error: string | null; loading: boolean }) {
+  if (error) return <section className="empty-area"><CircleGauge size={24} /><strong>Golf reporting needs attention</strong><span>{error}</span></section>;
+  if (loading && !golf) return <section className="empty-area"><CircleGauge size={24} /><strong>Loading golf reporting</strong><span>No placeholder figures are displayed while the reporting database responds.</span></section>;
+  if (!golf || golf.coverage?.status === "missing") return <section className="empty-area"><CircleGauge size={24} /><strong>Golf is not synced for this range</strong><span>No totals are invented for days that are not in the hold.</span></section>;
+  const allRounds = golf.member.rounds + golf.nonMember.rounds + golf.unclassifiedRounds;
+  return <><div className="period-bar"><span>{golf.period.label}</span><strong>{golf.period.start} – {golf.period.end}</strong><small>Held ForeUp copy</small></div><div className="live-grid"><article className="live-card"><Users size={18} /><span>Total rounds</span><strong>{allRounds}</strong><small>{golf.unclassifiedRounds} not classified by price class</small></article></div></>;
+}
+
+function apiBasePath() { return typeof window !== "undefined" && window.location.pathname.startsWith("/fairwayai") ? "/fairwayai" : ""; }
+function isoToday() { return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()); }
