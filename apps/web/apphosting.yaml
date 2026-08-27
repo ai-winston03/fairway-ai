@@ -9,10 +9,10 @@ env:
   - variable: FAIRWAY_AI_BASE_URL
     value: https://fairway-ai--fairway-ai-yuba.us-central1.hosted.app
     availability: [RUNTIME]
-  - variable: FAIRWAY_SMS_SENDING_ENABLED
-    value: "false"
-    availability: [RUNTIME]
   - variable: FAIRWAY_SMS_ALLOWLIST
+    value: "+14795798818"
+    availability: [RUNTIME]
+  - variable: FAIRWAY_SMS_SENDING_ENABLED
     value: ""
     availability: [RUNTIME]
   - variable: TWILIO_ACCOUNT_SID
