@@ -1,6 +1,4 @@
-import { SMS_HELD_MESSAGE } from "@/lib/sms-provider";
-
-export const SMS_HELD_BANNER = SMS_HELD_MESSAGE;
+export const SMS_HELD_BANNER = "Sending is off.";
 export const SMS_SEND_LABEL = "Send";
 export const SMS_HELD_CLASS = "sms-state held";
 export const SMS_BLOCKED_CLASS = "sms-state blocked";

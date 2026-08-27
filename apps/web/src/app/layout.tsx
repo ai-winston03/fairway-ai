@@ -1,10 +1,13 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import "./sms-held.css";
+import "./sms-kill-switch.css";
 
 export const metadata: Metadata = {
   title: "Yuba Golf Club | Operations",
-  description: "Yuba Golf Club operations dashboard"
+  description: "Yuba Golf Club operations dashboard",
+  icons: {
+    icon: [{ url: "/brand/icon.svg", type: "image/svg+xml" }]
+  }
 };
 
 // Without an explicit device viewport, mobile Safari can lay this desktop
