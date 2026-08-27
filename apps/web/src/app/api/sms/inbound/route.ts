@@ -5,7 +5,7 @@ import {
   getOrCreateConversation,
   type InboxConversation
 } from "@/lib/inbox-store";
-import { getSmsProviderStatus, sendSms, smsDestinationAllowed, twilioConfigured, verifyTwilioSignature, type SmsSendResult } from "@/lib/sms-provider";
+import { getSmsProviderStatus, inboundMaySendReply, sendSms, twilioConfigured, verifyTwilioSignature, type SmsSendResult } from "@/lib/sms-provider";
 import { verifiedStaff } from "@/lib/staff-access";
 
 function twiml(message?: string) {
@@ -27,6 +27,8 @@ function escapeXml(value: string) {
 }
 
 export async function POST(request: NextRequest) {
+  // Twilio inbound is not a staff session. Never require Firebase sign-in here.
+  // Authenticate the provider with the request signature instead.
   const form = await request.formData();
   const params: Record<string, string> = {};
   for (const [key, value] of form.entries()) {
@@ -43,7 +45,7 @@ export async function POST(request: NextRequest) {
   const body = (params.Body || "").trim();
   const sid = params.MessageSid;
   if (!from || !body) return twiml();
-  if (!smsDestinationAllowed(from)) return twiml();
+  // Outbound allowlist must not drop inbound mail. Record the text; replies stay gated by inboundMaySendReply().
 
   const fallbackConversation: InboxConversation = {
     id: `phone_${from.replace(/\D/g, "").slice(-10) || "unknown"}`,
@@ -74,6 +76,8 @@ export async function POST(request: NextRequest) {
   } catch {
     // Keep the turn even if inbox persist fails.
   }
+
+  if (!inboundMaySendReply()) return twiml();
 
   let turn;
   try {

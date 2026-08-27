@@ -9,6 +9,7 @@ import { firebaseAuth, firebaseEnabled } from "@/lib/firebase-client";
 import { InternalDashboard, OperationsArea } from "@/components/InternalDashboard";
 import { InternalLogin } from "@/components/InternalLogin";
 import { UserAccessManager } from "@/components/UserAccessManager";
+import { SMS_HELD_BANNER, automationsHeldState } from "@/lib/sms-held-ui";
 
 const nav: Array<{ id: OperationsArea; label: string; icon: typeof Flag; children: string[] }> = [
   { id: "golf", label: "Golf", icon: Flag, children: ["Overview", "Member play", "Non-member play", "Tee sheet"] },
@@ -25,6 +26,7 @@ export function InternalMode() {
   const [activeArea, setActiveArea] = useState<OperationsArea>("golf");
   const [activeTab, setActiveTab] = useState("Overview");
   const [expandedArea, setExpandedArea] = useState<OperationsArea>("golf");
+  const [sendingEnabled, setSendingEnabled] = useState(false);
   useEffect(() => {
     if (!firebaseAuth) return;
     return onAuthStateChanged(firebaseAuth, async (account) => {
@@ -35,10 +37,18 @@ export function InternalMode() {
         const payload = await response.json() as { profile?: TeamUser; error?: string };
         if (!response.ok || !payload.profile) throw new Error(payload.error ?? "Access was not granted.");
         setUser(payload.profile); setAccessError(null);
+        try {
+          const sms = await fetch("/api/sms/status", { cache: "no-store", headers: { authorization: `Bearer ${token}` } });
+          const smsPayload = await sms.json() as { sendingEnabled?: boolean };
+          setSendingEnabled(sms.ok && smsPayload.sendingEnabled === true);
+        } catch {
+          setSendingEnabled(false);
+        }
       } catch (error) { setUser(null); setAccessError(error instanceof Error ? error.message : "Access was not granted."); }
     });
   }, []);
   if (!user) return <InternalLogin error={accessError} />;
+  const automationsHeld = activeArea === "automations" ? automationsHeldState({ tab: activeTab, sendingEnabled }) : null;
   return <div className="workspace-shell">
     <aside className="workspace-nav" aria-label="Yuba Golf Club navigation">
       <div className="workspace-brand"><span>YG</span><div><strong>Yuba Golf Club</strong><small>Operations</small></div></div>
@@ -48,6 +58,6 @@ export function InternalMode() {
       </div>; })}</nav>
       <div className="workspace-nav-footer"><span><i />Held Firebase copy</span><small>ForeUp hold · Yuba Golf Club</small></div>
     </aside>
-    <main className="workspace-main"><header className="workspace-header"><div><div className="eyebrow">Yuba Golf Club</div><h1>Operations desk</h1></div><div><span>{user.name} · {roleLabels[user.role]}</span><button onClick={() => firebaseAuth ? void signOut(firebaseAuth) : setUser(null)} type="button"><LogOut size={15} /> Sign out</button></div></header>{activeArea === "platform" && activeTab === "Access" && can(user, "users:manage") ? <UserAccessManager /> : <InternalDashboard area={activeArea} requestedTab={activeTab} />}</main>
+    <main className="workspace-main"><header className="workspace-header"><div><div className="eyebrow">Yuba Golf Club</div><h1>Operations desk</h1></div><div><span>{user.name} · {roleLabels[user.role]}</span><button onClick={() => firebaseAuth ? void signOut(firebaseAuth) : setUser(null)} type="button"><LogOut size={15} /> Sign out</button></div></header>{automationsHeld?.showHeldBanner ? <p className="sms-held-banner" role="status">{SMS_HELD_BANNER}</p> : null}{activeArea === "platform" && activeTab === "Access" && can(user, "users:manage") ? <UserAccessManager /> : <InternalDashboard area={activeArea} requestedTab={activeTab} />}</main>
   </div>;
 }
