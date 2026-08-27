@@ -5,7 +5,10 @@ import "./sms-kill-switch.css";
 
 export const metadata: Metadata = {
   title: "Yuba Golf Club | Operations",
-  description: "Yuba Golf Club operations dashboard"
+  description: "Yuba Golf Club operations dashboard",
+  icons: {
+    icon: [{ url: "/brand/yuba-initials-emblem-black.png", type: "image/png" }]
+  }
 };
 
 // Without an explicit device viewport, mobile Safari can lay this desktop
