@@ -10,7 +10,7 @@ env:
     value: https://fairway-ai--fairway-ai-yuba.us-central1.hosted.app
     availability: [RUNTIME]
   - variable: FAIRWAY_SMS_ALLOWLIST
-    value: "+14795798818"
+    value: ""
     availability: [RUNTIME]
   - variable: FAIRWAY_SMS_SENDING_ENABLED
     value: ""
