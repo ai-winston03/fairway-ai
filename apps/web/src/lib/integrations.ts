@@ -1,5 +1,5 @@
 import { kpiGroupCatalog } from "@/lib/authz";
-import { twilioConfigured } from "@/lib/sms-provider";
+import { smsSendingEnabled, twilioConfigured } from "@/lib/sms-provider";
 
 export type IntegrationStatus = "connected" | "ready" | "not_connected" | "needs_review";
 
@@ -93,11 +93,13 @@ export const integrationAccounts: IntegrationAccount[] = [
     id: "int_sms",
     provider: "sms",
     label: "SMS/VoIP",
-    status: twilioConfigured() ? "connected" : "not_connected",
+    status: twilioConfigured() && smsSendingEnabled() ? "connected" : twilioConfigured() ? "needs_review" : "not_connected",
     owner: "Twilio webhook",
-    nextAction: twilioConfigured()
-      ? "Point the Twilio number webhook at /api/sms/inbound."
-      : "Add Twilio account credentials and a from-number. Threads and drafts work now; sends queue until then.",
+    nextAction: !smsSendingEnabled()
+      ? "Sending is off."
+      : twilioConfigured()
+        ? "Point the Twilio number webhook at /api/sms/inbound."
+        : "Add Twilio account credentials and a from-number. Threads and drafts work now; sends queue until then.",
     health: "Inbox store, inbound webhook, staff pause gate, queued send"
   },
   {
@@ -119,164 +121,3 @@ export const integrationAccounts: IntegrationAccount[] = [
     health: "Script-first automation with AI disabled by default"
   }
 ];
-
-export const hrLaborReports: HrLaborReport[] = [
-  {
-    department: "Pro shop",
-    period: "Current pay period",
-    laborHours: 312,
-    overtimeHours: 8,
-    grossPayCents: 684200,
-    headcount: 12
-  },
-  {
-    department: "Food & beverage",
-    period: "Current pay period",
-    laborHours: 428,
-    overtimeHours: 19,
-    grossPayCents: 913800,
-    headcount: 18
-  },
-  {
-    department: "Grounds",
-    period: "Current pay period",
-    laborHours: 366,
-    overtimeHours: 11,
-    grossPayCents: 824400,
-    headcount: 14
-  }
-];
-
-export const workerRuns: WorkerRun[] = [
-  {
-    id: "run_foreup_import",
-    kind: "foreup.member_import",
-    status: "succeeded",
-    aiUsed: false,
-    lastRunAt: "2026-07-09T08:15:00.000Z",
-    summary: "4 mock members normalized; no AI used."
-  },
-  {
-    id: "run_scheduler",
-    kind: "scheduler.messages",
-    status: "succeeded",
-    aiUsed: false,
-    lastRunAt: "2026-07-09T10:20:00.000Z",
-    summary: "Due scripted messages rendered with deterministic templates."
-  },
-  {
-    id: "run_gusto",
-    kind: "gusto.hr_snapshot",
-    status: "succeeded",
-    aiUsed: false,
-    lastRunAt: "2026-07-09T07:05:00.000Z",
-    summary: "Daily HR snapshot shaped for Gusto MCP; live auth not connected."
-  }
-];
-
-export function getIntegrationSummary() {
-  const readyCount = integrationAccounts.filter((account) => account.status === "ready" || account.status === "connected").length;
-  const kpiGroupCount = kpiGroupCatalog.length;
-
-  return {
-    readyCount,
-    totalCount: integrationAccounts.length,
-    kpiGroupCount,
-    aiUsedByWorkers: workerRuns.some((run) => run.aiUsed)
-  };
-}
-
-export function runGustoImport(mode: GustoImportMode = "csv"): GustoImportSummary {
-  return {
-    mode,
-    source: mode === "csv" ? "gusto-payroll-journal.csv" : mode === "api" ? "gusto-embedded-api" : "unified-hris-connector",
-    importedEmployees: hrLaborReports.reduce((total, report) => total + report.headcount, 0),
-    importedPayrollRuns: 1,
-    importedDepartmentMetrics: hrLaborReports.length,
-    aiUsed: false,
-    nextRunHint: "Run after payroll closes or nightly at 2:20 AM from the VPS worker."
-  };
-}
-
-export function getHrManagementSnapshot(): HrManagementSnapshot {
-  const departmentMetrics = hrLaborReports.map((report) => {
-    const averageHourlyCostCents = report.laborHours > 0 ? Math.round(report.grossPayCents / report.laborHours) : 0;
-    const laborCostPerHeadCents = report.headcount > 0 ? Math.round(report.grossPayCents / report.headcount) : 0;
-    const overtimeRate = report.laborHours > 0 ? report.overtimeHours / report.laborHours : 0;
-
-    return {
-      ...report,
-      averageHourlyCostCents,
-      laborCostPerHeadCents,
-      overtimeRate
-    };
-  });
-
-  const totalHeadcount = departmentMetrics.reduce((total, report) => total + report.headcount, 0);
-  const totalHours = departmentMetrics.reduce((total, report) => total + report.laborHours, 0);
-  const totalOvertime = departmentMetrics.reduce((total, report) => total + report.overtimeHours, 0);
-  const totalGrossPayCents = departmentMetrics.reduce((total, report) => total + report.grossPayCents, 0);
-  const highestOvertime = [...departmentMetrics].sort((a, b) => b.overtimeRate - a.overtimeRate)[0];
-  const highestCost = [...departmentMetrics].sort((a, b) => b.grossPayCents - a.grossPayCents)[0];
-  const overtimeRate = totalHours > 0 ? totalOvertime / totalHours : 0;
-
-  return {
-    source: "gusto_mcp",
-    mode: process.env.GUSTO_MCP_ENABLED === "true" ? "gusto-mcp" : "mock-mcp-shape",
-    mcpServerUrl: "https://mcp.api.gusto.com",
-    lastUpdatedAt: "2026-07-09T07:05:00.000Z",
-    payPeriod: "Current pay period",
-    summaryCards: [
-      {
-        label: "Active headcount",
-        value: String(totalHeadcount),
-        trend: `${departmentMetrics.length} departments from Gusto`,
-        tone: "neutral"
-      },
-      {
-        label: "Gross payroll",
-        value: formatMoney(totalGrossPayCents),
-        trend: `${Math.round(totalHours).toLocaleString()} labor hours`,
-        tone: "neutral"
-      },
-      {
-        label: "Overtime rate",
-        value: formatPercent(overtimeRate),
-        trend: `${totalOvertime} OT hours this period`,
-        tone: overtimeRate > 0.04 ? "watch" : "good"
-      },
-      {
-        label: "Avg labor cost/hr",
-        value: formatMoney(totalHours > 0 ? Math.round(totalGrossPayCents / totalHours) : 0),
-        trend: "Gross pay divided by hours",
-        tone: "neutral"
-      }
-    ],
-    departmentMetrics,
-    attentionItems: [
-      `${highestOvertime.department} has the highest overtime rate at ${formatPercent(highestOvertime.overtimeRate)}.`,
-      `${highestCost.department} is the largest labor cost center at ${formatMoney(highestCost.grossPayCents)}.`,
-      "Use MCP for read-only daily snapshots; keep staff changes inside Gusto."
-    ],
-    nextActions: [
-      "Authorize Gusto MCP with payroll and time tracking read scopes.",
-      "Schedule a daily morning HR snapshot for managers.",
-      "Map Gusto departments to the dashboard labels used by the club."
-    ]
-  };
-}
-
-function formatMoney(cents: number) {
-  return new Intl.NumberFormat("en-US", {
-    currency: "USD",
-    maximumFractionDigits: 0,
-    style: "currency"
-  }).format(cents / 100);
-}
-
-function formatPercent(value: number) {
-  return new Intl.NumberFormat("en-US", {
-    maximumFractionDigits: 1,
-    style: "percent"
-  }).format(value);
-}
