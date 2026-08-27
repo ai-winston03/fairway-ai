@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "crypto";
+import { logBlockedSmsAttemptSafe } from "@/lib/sms-attempts";
 
 export type SmsProviderId = "twilio" | "none";
 export type SmsDeliveryStatus = "queued" | "sent" | "delivered" | "failed";
@@ -7,6 +8,8 @@ export type SmsSendInput = {
   to: string;
   body: string;
   statusCallback?: string;
+  intent?: "staff" | "inbound_reply" | "scheduled" | "automation" | "unknown";
+  actorUid?: string | null;
 };
 
 export type SmsSendResult = {
@@ -144,9 +147,21 @@ export async function sendSms(input: SmsSendInput): Promise<SmsSendResult> {
   const to = normalizePhone(input.to);
   if (!to) return { provider: "none", status: "failed", error: "Destination phone is missing." };
   if (!smsSendingEnabled()) {
+    logBlockedSmsAttemptSafe({
+      to,
+      intent: input.intent,
+      actorUid: input.actorUid,
+      blockReason: "kill_switch"
+    });
     return { provider: "none", status: "queued", error: SMS_HELD_MESSAGE };
   }
   if (!smsDestinationAllowed(to)) {
+    logBlockedSmsAttemptSafe({
+      to,
+      intent: input.intent,
+      actorUid: input.actorUid,
+      blockReason: "empty_allowlist"
+    });
     return { provider: "none", status: "queued" };
   }
   if (!twilioConfigured()) {

@@ -7,6 +7,7 @@ import {
   getOrCreateConversation,
   listMessages
 } from "@/lib/inbox-store";
+import { logBlockedSmsAttemptSafe } from "@/lib/sms-attempts";
 import { getSmsProviderStatus, sendSms, staffOutboundHeld } from "@/lib/sms-provider";
 import { canMessageMember, canViewMemberThread } from "@/lib/authz";
 import { verifiedStaff } from "@/lib/staff-access";
@@ -64,6 +65,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const held = await heldMemberPhone(memberId);
   if ("error" in held) return held.error;
   if (held.optOutText) {
+    logBlockedSmsAttemptSafe({ to: held.phone, intent: "staff", actorUid: staff.uid, blockReason: "opt_out" });
     return NextResponse.json({
       connected: false,
       error: "ForeUp has this member opted out. Sending is disabled."
@@ -71,6 +73,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
   }
   const blocked = staffOutboundHeld();
   if (blocked) {
+    logBlockedSmsAttemptSafe({ to: held.phone, intent: "staff", actorUid: staff.uid, blockReason: "kill_switch" });
     return NextResponse.json(blocked.body, { status: blocked.status });
   }
   const existing = await getConversationByMemberId(memberId);
@@ -84,7 +87,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       error: "Pause the bot before sending a staff reply."
     }, { status: 409 });
   }
-  const sent = await sendSms({ to: conversation.phone, body: parsed.data.body });
+  const sent = await sendSms({ to: conversation.phone, body: parsed.data.body, intent: "staff", actorUid: staff.uid });
   const saved = await appendMessage({
     conversation,
     direction: "outbound",
