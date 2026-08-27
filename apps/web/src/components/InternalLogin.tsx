@@ -25,7 +25,6 @@ export function InternalLogin({ error }: InternalLoginProps) {
       return;
     }
 
-    // Firebase action links are one-time use. Do not retry a spent link.
     window.localStorage.removeItem("fairway_magic_link_email");
     window.history.replaceState({}, document.title, window.location.pathname);
     setCompletingLink(false);
@@ -84,7 +83,7 @@ export function InternalLogin({ error }: InternalLoginProps) {
   }
 
   return <section className="panel login-panel sso-panel">
-    <img alt="Yuba Golf Club" className="login-emblem" src="/yuba-full-name-emblem-black.svg" height={64} />
+    <img alt="Fairway" className="login-emblem" height={64} src="/brand/full-name-emblem-black.svg" width={64} />
     <div className="panel-header"><div><div className="eyebrow">Secure staff access</div><h1 className="panel-title">Sign in to Fairway</h1><p className="panel-subtitle">Firebase Authentication and role-based access protect member and operational data.</p></div></div>
     <div className="login-body">
       {firebaseEnabled ? <form className="access-form login-stack" onSubmit={(event) => { event.preventDefault(); void signIn(); }}>
