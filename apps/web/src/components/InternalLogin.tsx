@@ -84,7 +84,7 @@ export function InternalLogin({ error }: InternalLoginProps) {
   }
 
   return <section className="panel login-panel sso-panel">
-    <img alt="Yuba Golf Club" className="login-emblem" src="/yuba-full-name-emblem-black.svg" height={64} />
+    <img alt="Yuba Golf Club" className="login-emblem" src="/full-name-emblem-black.svg" height={64} />
     <div className="panel-header"><div><div className="eyebrow">Secure staff access</div><h1 className="panel-title">Sign in to Fairway</h1><p className="panel-subtitle">Firebase Authentication and role-based access protect member and operational data.</p></div></div>
     <div className="login-body">
       {firebaseEnabled ? <form className="login-stack" onSubmit={(event) => { event.preventDefault(); void signIn(); }}>
