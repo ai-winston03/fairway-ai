@@ -5,7 +5,8 @@ import { useEffect, useState } from "react";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { TeamUser } from "@/lib/bot-config";
 import { can, roleLabels } from "@/lib/authz";
-import { firebaseAuth, firebaseEnabled } from "@/lib/firebase-client";
+import { firebaseAuth } from "@/lib/firebase-client";
+import { AutomationsDesk } from "@/components/AutomationsDesk";
 import { InternalDashboard, OperationsArea } from "@/components/InternalDashboard";
 import { InternalLogin } from "@/components/InternalLogin";
 import { UserAccessManager } from "@/components/UserAccessManager";
@@ -48,6 +49,6 @@ export function InternalMode() {
       </div>; })}</nav>
       <div className="workspace-nav-footer"><span><i />Held Firebase copy</span><small>ForeUp hold · Yuba Golf Club</small></div>
     </aside>
-    <main className="workspace-main"><header className="workspace-header"><div><div className="eyebrow">Yuba Golf Club</div><h1>Operations desk</h1></div><div><span>{user.name} · {roleLabels[user.role]}</span><button onClick={() => firebaseAuth ? void signOut(firebaseAuth) : setUser(null)} type="button"><LogOut size={15} /> Sign out</button></div></header>{activeArea === "platform" && activeTab === "Access" && can(user, "users:manage") ? <UserAccessManager /> : <InternalDashboard area={activeArea} requestedTab={activeTab} />}</main>
+    <main className="workspace-main"><header className="workspace-header"><div><div className="eyebrow">Yuba Golf Club</div><h1>Operations desk</h1></div><div><span>{user.name} · {roleLabels[user.role]}</span><button onClick={() => firebaseAuth ? void signOut(firebaseAuth) : setUser(null)} type="button"><LogOut size={15} /> Sign out</button></div></header>{activeArea === "platform" && activeTab === "Access" && can(user, "users:manage") ? <UserAccessManager /> : activeArea === "automations" ? <AutomationsDesk tab={activeTab} onTabChange={setActiveTab} /> : <InternalDashboard area={activeArea} requestedTab={activeTab} />}</main>
   </div>;
 }

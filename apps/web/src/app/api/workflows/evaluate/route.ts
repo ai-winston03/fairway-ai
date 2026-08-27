@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { SMS_HELD_MESSAGE, smsSendingEnabled } from "@/lib/sms-provider";
 import { evaluateWorkflowSafety, workflowLibrary } from "@/lib/workflows";
 import { staffGuard } from "@/lib/staff-access";
 
@@ -15,6 +16,18 @@ export async function POST(request: NextRequest) {
 
   if (!workflow) {
     return NextResponse.json({ error: "Workflow not found" }, { status: 404 });
+  }
+
+  if (!smsSendingEnabled()) {
+    return NextResponse.json({
+      held: true,
+      sendingEnabled: false,
+      sent: 0,
+      note: SMS_HELD_MESSAGE,
+      workflow,
+      safety: evaluateWorkflowSafety(workflow),
+      executionMode: "held"
+    });
   }
 
   return NextResponse.json({

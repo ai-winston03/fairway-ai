@@ -19,10 +19,13 @@ export type SmsSendResult = {
 export type SmsProviderStatus = {
   provider: SmsProviderId;
   connected: boolean;
+  sendingEnabled: boolean;
   fromNumber?: string;
   inboundPath: string;
   nextAction: string;
 };
+
+export const SMS_HELD_MESSAGE = "Sending is off.";
 
 const inboundPath = "/api/sms/inbound";
 
@@ -53,6 +56,11 @@ export function twilioConfigured() {
   return Boolean(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_FROM_NUMBER && twilioRestAuth());
 }
 
+/** Default-off kill switch. Outbound SMS only when FAIRWAY_SMS_SENDING_ENABLED is exactly "true". */
+export function smsSendingEnabled() {
+  return process.env.FAIRWAY_SMS_SENDING_ENABLED === "true";
+}
+
 export function smsAllowlist() {
   return (process.env.FAIRWAY_SMS_ALLOWLIST ?? "")
     .split(/[\s,]+/)
@@ -68,26 +76,76 @@ export function smsDestinationAllowed(to: string) {
 }
 
 export function getSmsProviderStatus(): SmsProviderStatus {
-  if (twilioConfigured()) {
+  const sendingEnabled = smsSendingEnabled();
+  if (twilioConfigured() && sendingEnabled) {
     return {
       provider: "twilio",
       connected: true,
+      sendingEnabled,
       fromNumber: process.env.TWILIO_FROM_NUMBER,
       inboundPath,
       nextAction: "Point the Twilio number webhook at /api/sms/inbound."
     };
   }
+  if (twilioConfigured() && !sendingEnabled) {
+    return {
+      provider: "twilio",
+      connected: false,
+      sendingEnabled,
+      fromNumber: process.env.TWILIO_FROM_NUMBER,
+      inboundPath,
+      nextAction: SMS_HELD_MESSAGE
+    };
+  }
   return {
     provider: "none",
     connected: false,
+    sendingEnabled,
     inboundPath,
-    nextAction: "Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_FROM_NUMBER. Outbound stays queued until then."
+    nextAction: sendingEnabled
+      ? "Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_FROM_NUMBER. Outbound stays queued until then."
+      : SMS_HELD_MESSAGE
   };
+}
+
+export function staffOutboundHeld() {
+  if (smsSendingEnabled()) return null;
+  return {
+    status: 403 as const,
+    body: {
+      connected: true,
+      sendingEnabled: false,
+      error: SMS_HELD_MESSAGE,
+      sms: getSmsProviderStatus(),
+      send: { provider: "none" as const, status: "queued" as const, error: SMS_HELD_MESSAGE }
+    }
+  };
+}
+
+export function scheduledOutboundHold<T extends Record<string, unknown>>(payload: T) {
+  if (smsSendingEnabled()) {
+    return { ...payload, sendingEnabled: true, held: false };
+  }
+  return {
+    ...payload,
+    sendingEnabled: false,
+    held: true,
+    sent: 0,
+    note: SMS_HELD_MESSAGE
+  };
+}
+
+/** Inbound webhooks may record mail; they must not emit a TwiML or REST reply while held. */
+export function inboundMaySendReply() {
+  return smsSendingEnabled();
 }
 
 export async function sendSms(input: SmsSendInput): Promise<SmsSendResult> {
   const to = normalizePhone(input.to);
   if (!to) return { provider: "none", status: "failed", error: "Destination phone is missing." };
+  if (!smsSendingEnabled()) {
+    return { provider: "none", status: "queued", error: SMS_HELD_MESSAGE };
+  }
   if (!smsDestinationAllowed(to)) {
     return { provider: "none", status: "queued" };
   }
@@ -123,9 +181,7 @@ export async function sendSms(input: SmsSendInput): Promise<SmsSendResult> {
 
 export function verifyTwilioSignature(requestUrl: string, params: Record<string, string>, signature: string | null) {
   const token = process.env.TWILIO_AUTH_TOKEN;
-  // API keys cannot validate Twilio signatures. Allow inbound until an auth token exists.
-  if (!token) return true;
-  if (!signature) return false;
+  if (!token || !signature) return false;
   const sorted = Object.keys(params).sort().reduce((raw, key) => `${raw}${key}${params[key]}`, requestUrl);
   const expected = createHmac("sha1", token).update(sorted).digest("base64");
   const left = Buffer.from(expected);

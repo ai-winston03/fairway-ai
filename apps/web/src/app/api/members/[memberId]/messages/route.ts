@@ -7,7 +7,7 @@ import {
   getOrCreateConversation,
   listMessages
 } from "@/lib/inbox-store";
-import { getSmsProviderStatus, sendSms } from "@/lib/sms-provider";
+import { getSmsProviderStatus, sendSms, staffOutboundHeld } from "@/lib/sms-provider";
 import { canMessageMember, canViewMemberThread } from "@/lib/authz";
 import { verifiedStaff } from "@/lib/staff-access";
 
@@ -26,7 +26,7 @@ async function heldMemberPhone(memberId: string) {
     return { error: NextResponse.json(payload, { status: profile.missing === "directory" ? 503 : 404 }) };
   }
   if (!profile.member.phone) return { error: NextResponse.json({ connected: false, error: "This member has no phone number." }, { status: 409 }) };
-  return { phone: profile.member.phone };
+  return { phone: profile.member.phone, optOutText: profile.member.optOutText };
 }
 
 export async function GET(request: NextRequest, context: RouteContext) {
@@ -63,6 +63,16 @@ export async function POST(request: NextRequest, context: RouteContext) {
   }
   const held = await heldMemberPhone(memberId);
   if ("error" in held) return held.error;
+  if (held.optOutText) {
+    return NextResponse.json({
+      connected: false,
+      error: "ForeUp has this member opted out. Sending is disabled."
+    }, { status: 403 });
+  }
+  const blocked = staffOutboundHeld();
+  if (blocked) {
+    return NextResponse.json(blocked.body, { status: blocked.status });
+  }
   const existing = await getConversationByMemberId(memberId);
   if (!canMessageMember(staff, existing?.assignedStaffUids ?? [], staff.uid)) {
     return NextResponse.json({ connected: false, error: "You can only text members assigned to you." }, { status: 403 });

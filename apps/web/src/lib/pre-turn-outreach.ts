@@ -4,6 +4,7 @@ import {
   ConversationState,
   emptyConversationState
 } from "@/lib/conversation-engine";
+import { smsSendingEnabled } from "@/lib/sms-provider";
 
 export const PRE_TURN_OUTREACH_WINDOW_MINUTES = 180;
 
@@ -17,7 +18,8 @@ export type PreTurnOutreachReason =
   | "after_the_turn"
   | "already_sent"
   | "missing_tee_time"
-  | "restaurant_closed";
+  | "restaurant_closed"
+  | "sending_held";
 
 export type PreTurnTeeTime = {
   id: string;
@@ -78,6 +80,7 @@ export function planPreTurnSnackShackOutreach(input: PreTurnOutreachInput): PreT
     state
   });
 
+  if (!smsSendingEnabled()) return skip("sending_held");
   if (input.conversation.automationStatus === "staff_paused") return skip("staff_paused");
   if (input.conversation.automationStatus === "staff_owned") return skip("staff_owned");
   if (input.conversation.automationStatus !== "bot_active") return skip("staff_owned");

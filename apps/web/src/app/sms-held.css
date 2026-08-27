@@ -1,0 +1,97 @@
+.sms-held-banner {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  color: #6b5a2b;
+  background: #fff8e8;
+  border: 1px solid #b49352;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.member-thread .sms-held-banner {
+  margin: 0;
+}
+
+.workspace-main > .sms-held-banner {
+  margin: 16px clamp(20px, 4vw, 52px) 0;
+}
+
+.sms-state.held {
+  color: #6b5a2b !important;
+  background: #fff8e8 !important;
+  border-color: #b49352 !important;
+}
+
+.connection-badge.warning {
+  color: #f3e2b8;
+}
+
+.connection-badge.warning span {
+  background: #efbd5c;
+  box-shadow: none;
+  animation: none;
+}
+
+.hold-gap {
+  color: #6b5a2b;
+  background: #fff8e8;
+  border-color: #b49352;
+}
+
+.hold-gap.missing {
+  color: #7a3b34;
+  background: #fdf1ef;
+  border-color: #a5483c;
+}
+
+.live-card strong {
+  color: #09283c;
+}
+
+.login-emblem {
+  display: block;
+  height: 64px;
+  width: auto;
+  margin: 28px auto 0;
+}
+
+.sso-panel .panel-header {
+  justify-content: center;
+  text-align: center;
+}
+
+.sso-panel .panel-header > div {
+  width: 100%;
+}
+
+.login-stack {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  width: 100%;
+  gap: 10px;
+}
+
+.login-stack input,
+.login-stack .button,
+.login-magic-link {
+  width: 100%;
+}
+
+.login-inbox-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.sending-off-banner {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  color: #6b5a2b;
+  background: #fff8e8;
+  border: 1px solid #b49352;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 800;
+}
