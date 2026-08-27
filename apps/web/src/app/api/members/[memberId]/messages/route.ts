@@ -56,9 +56,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
   if (!staff) {
     return NextResponse.json({ connected: false, error: "Sign in is required." }, { status: 401 });
   }
-  const heldSend = staffOutboundHeld();
-  if (heldSend) {
-    return NextResponse.json(heldSend.body, { status: heldSend.status });
+  const blocked = staffOutboundHeld();
+  if (blocked) {
+    return NextResponse.json(blocked.body, { status: blocked.status });
   }
   const { memberId } = await context.params;
   const parsed = sendSchema.safeParse(await request.json());
