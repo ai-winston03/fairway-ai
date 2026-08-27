@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { syncForeupDailyHold } from "@/lib/foreup-reporting-sync";
 import { getDueScheduledMessages } from "@/lib/member-directory";
 import { PRE_TURN_SNACK_SHACK_JOB, runPreTurnSnackShackJob } from "@/lib/pre-turn-scheduler";
+import { scheduledOutboundHold, smsSendingEnabled } from "@/lib/sms-provider";
 import { verifiedStaff } from "@/lib/staff-access";
 
 function schedulerAuthorized(request: NextRequest) {
@@ -28,6 +29,11 @@ export async function POST(request: NextRequest) {
     payload.dueCount = dueMessages.length;
     payload.dueMessages = dueMessages;
     payload.note = "Cron should call this endpoint or the scheduler script. AI should only run when a deterministic parser marks a job needs_review.";
+    if (!smsSendingEnabled()) {
+      payload.sent = 0;
+      payload.held = true;
+      payload.note = "Sending is off.";
+    }
   }
 
   if (jobs.includes("foreup-hold")) {
@@ -50,8 +56,12 @@ export async function POST(request: NextRequest) {
     if (!courseId) {
       return NextResponse.json({ error: "ForeUp course configuration is missing.", ...payload }, { status: 503 });
     }
-    payload.preTurnSnackShack = await runPreTurnSnackShackJob({ courseId, now });
+    if (!smsSendingEnabled()) {
+      payload.preTurnSnackShack = { delivery: "held", queued: 0, skipped: 0, reason: "Sending is off." };
+    } else {
+      payload.preTurnSnackShack = await runPreTurnSnackShackJob({ courseId, now });
+    }
   }
 
-  return NextResponse.json(payload);
+  return NextResponse.json(scheduledOutboundHold(payload));
 }
