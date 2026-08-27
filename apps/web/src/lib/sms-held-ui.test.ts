@@ -59,11 +59,10 @@ describe("member composer kill switch", () => {
 });
 
 describe("automations Schedule/History held treatment", () => {
-  it("uses the same gold banner on Schedule and History while sending is off", () => {
+  it("uses the same Sending is off. banner on Schedule and History while sending is off", () => {
     expect(automationsHeldState({ tab: "Schedule", sendingEnabled: false })).toEqual({
       showHeldBanner: true,
-      bannerText: "Sending is off.",
-      gold: SMS_HELD_GOLD
+      bannerText: "Sending is off."
     });
     expect(automationsHeldState({ tab: "History", sendingEnabled: false }).showHeldBanner).toBe(true);
     expect(SMS_HELD_GOLD).toBe("#b49352");

@@ -1,4 +1,6 @@
-export const SMS_HELD_BANNER = "Sending is off.";
+import { SMS_HELD_MESSAGE } from "@/lib/sms-provider";
+
+export const SMS_HELD_BANNER = SMS_HELD_MESSAGE;
 export const SMS_SEND_LABEL = "Send";
 export const SMS_HELD_CLASS = "sms-state held";
 export const SMS_BLOCKED_CLASS = "sms-state blocked";
@@ -52,7 +54,6 @@ export function automationsHeldState(input: { tab: string; sendingEnabled: boole
   const scheduleOrHistory = input.tab === "Schedule" || input.tab === "History";
   return {
     showHeldBanner: scheduleOrHistory && !input.sendingEnabled,
-    bannerText: SMS_HELD_BANNER,
-    gold: SMS_HELD_GOLD
+    bannerText: SMS_HELD_BANNER
   };
 }
