@@ -33,6 +33,22 @@
   animation: none;
 }
 
+.hold-gap {
+  color: #6b5a2b;
+  background: #fff8e8;
+  border-color: #b49352;
+}
+
+.hold-gap.missing {
+  color: #7a3b34;
+  background: #fdf1ef;
+  border-color: #a5483c;
+}
+
+.live-card strong {
+  color: #09283c;
+}
+
 .login-emblem {
   display: block;
   height: 64px;
@@ -40,8 +56,13 @@
   margin: 28px auto 0;
 }
 
-.login-panel .panel-header {
-  border-top: 0;
+.sso-panel .panel-header {
+  justify-content: center;
+  text-align: center;
+}
+
+.sso-panel .panel-header > div {
+  width: 100%;
 }
 
 .login-stack {
