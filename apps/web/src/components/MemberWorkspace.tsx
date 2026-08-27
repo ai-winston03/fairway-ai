@@ -2,7 +2,8 @@
 
 import { CalendarDays, ChevronRight, MessageSquareText, PauseCircle, PlayCircle, ReceiptText, RefreshCw, Search, Send, ShieldCheck, Users } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { memberSmsBadge, staffComposerState } from "@/lib/sms-held-ui";
+import { SendingOffBanner } from "@/components/SendingOffBanner";
+import { SMS_SEND_LABEL, memberSmsBadge, staffComposerState } from "@/lib/sms-held-ui";
 
 type Member = {
   id: string;
@@ -29,10 +30,9 @@ type ThreadMessage = {
   createdAt: string;
 };
 type ThreadConversation = { id: string; automationStatus: "bot_active" | "staff_paused" | "staff_owned"; phone: string };
-type SmsStatus = { connected: boolean; sendingEnabled?: boolean; provider: string; nextAction: string };
+type SmsStatus = { connected: boolean; provider: string; nextAction: string; sendingEnabled?: boolean };
 
 function apiPath(path: string) {
-  // Tailscale exposes the app beneath /fairwayai; local Next development is served at root.
   return typeof window !== "undefined" && window.location.pathname.startsWith("/fairwayai") ? `/fairwayai${path}` : path;
 }
 
@@ -60,16 +60,16 @@ export function MemberWorkspace() {
   const selected = members.find((member) => member.id === selectedId) ?? filtered[0];
   const botOwnsThread = conversation?.automationStatus === "bot_active";
   const sendingEnabled = sms?.sendingEnabled === true;
-  const badge = selected
-    ? memberSmsBadge({ optOutText: selected.optOutText, sendingEnabled, connected: sms?.connected === true })
-    : null;
   const composer = staffComposerState({
-    optOutText: selected?.optOutText === true,
+    optOutText: selected?.optOutText ?? false,
     sendingEnabled,
     botOwnsThread,
     threadBusy,
     draft
   });
+  const badge = selected
+    ? memberSmsBadge({ optOutText: selected.optOutText, sendingEnabled, connected: sms?.connected === true })
+    : null;
 
   async function loadMembers() {
     setLoading(true);
@@ -186,12 +186,12 @@ export function MemberWorkspace() {
       </aside>
       <section className="member-detail-panel">
         {selected ? <>
-          <div className="member-detail-heading"><div><h3>{selected.name}</h3><span>{selected.phone || "No phone on file"} · {selected.email || "No email on file"}</span></div><span className={badge?.className}><ShieldCheck size={14} />{badge?.label}</span></div>
+          <div className="member-detail-heading"><div><h3>{selected.name}</h3><span>{selected.phone || "No phone on file"} · {selected.email || "No email on file"}</span></div>{badge ? <span className={badge.className}><ShieldCheck size={14} />{badge.label}</span> : null}</div>
           <div className="member-fact-row"><span>{selected.membershipGroups.join(" · ") || "Member"}</span><span>Handicap {selected.handicap || "—"}</span><span>{[selected.city, selected.state].filter(Boolean).join(", ") || "Location unavailable"}</span></div>
           <div className="member-tee-times"><div className="member-section-title"><CalendarDays size={16} /><strong>Scheduled tee times</strong><small>Held next 90 days</small></div>{loadingProfile ? <p>Loading tee times…</p> : profile?.connected ? profile.teeTimes?.length ? <div className="tee-time-list">{profile.teeTimes.map((teeTime) => <article key={teeTime.id}><strong>{formatTeeTime(teeTime.startsAt)}</strong><span>{teeTime.title} · {teeTime.players} players · {teeTime.carts} carts</span><small>{teeTime.status}</small></article>)}</div> : <p>{profile.teeTimesStatus === "missing" ? "Upcoming tee times are not in the held copy." : "No upcoming tee times in the held copy."}</p> : <p>{profile?.error ?? "No member profile loaded."}</p>}</div>
           <div className="member-thread">
             <div className="member-thread-toolbar">
-              <div><strong>SMS thread</strong><p>{selected.optOutText ? "ForeUp has this member opted out. Sending is disabled." : sendingEnabled ? (sms?.connected ? "Twilio is connected. Inbound hits /api/sms/inbound." : "Twilio is not connected yet. Drafts and staff replies are stored and queued.") : composer.bannerText}</p></div>
+              <div><strong>SMS thread</strong><p>{selected.optOutText ? "ForeUp has this member opted out. Sending is disabled." : sendingEnabled ? (sms?.connected ? "Twilio is connected. Inbound hits /api/sms/inbound." : "Twilio is not connected yet. Drafts and staff replies are stored and queued.") : "Sending is off."}</p></div>
               <div className="member-thread-actions">
                 {botOwnsThread
                   ? <button className="button secondary" disabled={threadBusy || selected.optOutText} onClick={() => void runThreadAction("pause")} type="button"><PauseCircle size={14} />Pause bot</button>
@@ -203,10 +203,10 @@ export function MemberWorkspace() {
               {messages.length ? messages.map((message) => <article className={`member-bubble ${message.author}`} key={message.id}><strong>{message.author}</strong><p>{message.body}</p><small>{formatMessageTime(message.createdAt)} · {message.status}</small></article>) : <p className="member-empty">No messages yet. The thread is ready for inbound Twilio or a staff draft.</p>}
             </div>
             {threadError && <p className="member-thread-error">{threadError}</p>}
-            {composer.showHeldBanner && <p className="sms-held-banner" role="status">{composer.bannerText}</p>}
+            {composer.showHeldBanner && <SendingOffBanner />}
             {composer.composerVisible && <form className="member-composer" onSubmit={(event) => void sendStaffMessage(event)}>
               <textarea aria-label="Staff reply" disabled={composer.textareaDisabled} onChange={(event) => setDraft(event.target.value)} placeholder={botOwnsThread ? "Pause the bot before sending a staff reply." : "Write a staff reply"} value={draft} />
-              <button className="button" disabled={composer.sendDisabled} type="submit"><Send size={14} />{composer.sendLabel}</button>
+              <button className="button" disabled={composer.sendDisabled} type="submit"><Send size={14} />{SMS_SEND_LABEL}</button>
             </form>}
           </div>
         </> : <div className="empty-state"><Users size={22} /><span>Select a member to view their profile.</span></div>}
