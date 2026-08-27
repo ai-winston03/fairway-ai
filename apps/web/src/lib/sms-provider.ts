@@ -198,7 +198,7 @@ export function verifyTwilioSignature(requestUrl: string, params: Record<string,
   const token = process.env.TWILIO_AUTH_TOKEN;
   if (!token || !signature) return false;
   const sorted = Object.keys(params).sort().reduce((raw, key) => `${raw}${key}${params[key]}`, requestUrl);
-  const expected = createHmac("sha1", token).update(sorted, "utf8").digest("base64");
+  const expected = createHmac("sha1", token).update(sorted).digest("base64");
   const left = Buffer.from(expected);
   const right = Buffer.from(signature);
   return left.length === right.length && timingSafeEqual(left, right);

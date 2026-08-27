@@ -5,6 +5,7 @@ import {
   getOrCreateConversation,
   type InboxConversation
 } from "@/lib/inbox-store";
+import { logBlockedSmsAttemptSafe } from "@/lib/sms-attempts";
 import { getSmsProviderStatus, inboundMaySendReply, sendSms, verifyTwilioSignature, type SmsSendResult } from "@/lib/sms-provider";
 import { verifiedStaff } from "@/lib/staff-access";
 
@@ -77,7 +78,10 @@ export async function POST(request: NextRequest) {
     // Keep the turn even if inbox persist fails.
   }
 
-  if (!inboundMaySendReply()) return twiml();
+  if (!inboundMaySendReply()) {
+    logBlockedSmsAttemptSafe({ to: from, intent: "inbound_reply", blockReason: "kill_switch" });
+    return twiml();
+  }
 
   let turn;
   try {
@@ -87,7 +91,7 @@ export async function POST(request: NextRequest) {
   }
   if (!turn.shouldReply || !turn.reply) return twiml();
 
-  const sent: SmsSendResult = await sendSms({ to: turn.conversation.phone || from, body: turn.reply }).catch((): SmsSendResult => ({
+  const sent: SmsSendResult = await sendSms({ to: turn.conversation.phone || from, body: turn.reply, intent: "inbound_reply" }).catch((): SmsSendResult => ({
     provider: "none",
     status: "failed"
   }));
