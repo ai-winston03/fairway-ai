@@ -28,11 +28,11 @@ function formatMissingDays(days: string[]) {
   return ranges.join(", ");
 }
 
-export function HoldGapBanner({ coverage, label, loadedEmpty }: { coverage?: HoldCoverage; label: string; loadedEmpty?: boolean }) {
+export function HoldGapBanner({ coverage, label, loadedEmpty = false }: { coverage?: HoldCoverage; label: string; loadedEmpty?: boolean }) {
   const kind = holdGapKind(coverage?.status, loadedEmpty);
+  if (kind === "none") return null;
   if (kind === "missing") {
-    return <section className="hold-gap missing"><strong>{label} is not synced for this range</strong><span>{coverage?.missingDays?.length ? `Missing ${formatMissingDays(coverage.missingDays)}. ` : ""}No totals are invented for days that are not in the hold. This is not a live ForeUp pull.</span></section>;
+    return <section className="hold-gap missing"><strong>{label} is not synced for this range</strong><span>Missing {formatMissingDays(coverage?.missingDays ?? [])}. No held days — totals are not invented. This is not a live ForeUp pull.</span></section>;
   }
-  if (kind !== "partial" || !coverage) return null;
-  return <section className="hold-gap"><strong>{coverage.missingDays.length} day{coverage.missingDays.length === 1 ? "" : "s"} missing from the held copy</strong><span>Showing {coverage.heldDays.length} held day{coverage.heldDays.length === 1 ? "" : "s"}. Missing {formatMissingDays(coverage.missingDays)}.</span></section>;
+  return <section className="hold-gap"><strong>{coverage?.missingDays.length} day{coverage?.missingDays.length === 1 ? "" : "s"} missing from the held copy</strong><span>Showing {coverage?.heldDays.length} held day{coverage?.heldDays.length === 1 ? "" : "s"}. Missing {formatMissingDays(coverage?.missingDays ?? [])}.</span></section>;
 }
