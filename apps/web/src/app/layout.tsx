@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   title: "Yuba Golf Club | Operations",
   description: "Yuba Golf Club operations dashboard",
   icons: {
-    icon: [{ url: "/brand/yuba-initials-emblem-black.png", type: "image/png" }]
+    icon: [{ url: "/brand/icon.svg", type: "image/svg+xml" }]
   }
 };
 
