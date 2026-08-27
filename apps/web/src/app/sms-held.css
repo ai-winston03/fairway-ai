@@ -1,0 +1,24 @@
+.sms-held-banner {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  color: #09283c;
+  background: #f7f0e3;
+  border: 1px solid #b49352;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.member-thread .sms-held-banner {
+  margin: 0;
+}
+
+.workspace-main > .sms-held-banner {
+  margin: 16px clamp(20px, 4vw, 52px) 0;
+}
+
+.sms-state.held {
+  color: #6b5a2b !important;
+  background: #fff8e8 !important;
+  border-color: #b49352 !important;
+}

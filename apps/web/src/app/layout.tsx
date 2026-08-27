@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import "./sms-held.css";
 
 export const metadata: Metadata = {
   title: "Yuba Golf Club | Operations",
