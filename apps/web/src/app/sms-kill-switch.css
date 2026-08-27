@@ -1,23 +1,47 @@
+/* Held Golf Overview: gold warning badge, never a green live pulse. */
+.connection-badge.warning {
+  color: #f3e2b8;
+}
+
+.connection-badge.warning span {
+  background: #efbd5c;
+  box-shadow: none;
+  animation: none;
+}
+
+.live-card strong,
+.live-card span,
+.live-card small {
+  opacity: 1;
+}
+
 .login-emblem {
   display: block;
   width: auto;
   height: 64px;
-  margin: 28px auto 8px;
+  margin: 24px auto 0;
 }
 
 .login-panel .panel-header {
+  justify-content: center;
   padding-top: 12px;
+  text-align: center;
 }
 
-.access-form.login-stack {
+.login-panel .panel-header > div {
+  width: 100%;
+}
+
+.login-stack {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
   width: 100%;
   gap: 10px;
   margin-top: 0;
 }
 
-.access-form.login-stack .button,
+.login-stack input,
+.login-stack .button,
 .login-magic-link {
   width: 100%;
 }
@@ -49,5 +73,9 @@
 @media (prefers-color-scheme: dark) {
   .login-inbox-note {
     color: var(--muted);
+  }
+
+  .live-card strong {
+    color: var(--ink);
   }
 }
