@@ -1,2 +1,2 @@
-export { AutomationsPanel, GolfPanel, HoldGapBanner, MembersPanel, PlatformPanel, ReportRangeControl } from "./InternalDashboardGolf";
-export { CommercePanel, EmptyArea } from "./InternalDashboardCommerce";
+export { AutomationsPanel, CommercePanel, GolfPanel, HoldGapBanner, MembersPanel, PlatformPanel, ReportRangeControl } from "./InternalDashboardGolf";
+export { EmptyArea } from "./InternalDashboardCommerce";
