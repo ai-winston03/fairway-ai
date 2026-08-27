@@ -88,18 +88,13 @@ export function InternalDashboard({ area, requestedTab }: { area: OperationsArea
     return () => controller.abort();
   }, [reportQuery, reloadKey]);
 
-  const holdStatus = golf?.coverage?.status === "missing" && commerce?.coverage?.status === "missing"
-    ? "missing"
-    : golf?.coverage?.status === "partial" || commerce?.coverage?.status === "partial" || golf?.coverage?.status === "missing" || commerce?.coverage?.status === "missing"
-      ? "partial"
-      : golf || commerce ? "complete" : null;
-  const golfStatus = connectionError ? "Needs attention" : holdStatus === "missing" ? "Range not in hold" : holdStatus === "partial" ? "Held copy has gaps" : golf || commerce ? "Reporting data synced" : "Loading reporting data";
+  const reportingHero = area === "golf" || area === "pro-shop" || area === "clubhouse";
   return <section className="operations-dashboard" aria-label={`${config.label} workspace`}>
-    <header className="operations-hero"><div><div className="eyebrow">{config.eyebrow}</div><h2>{config.title}</h2><p>{config.description}</p></div><div className={`connection-badge ${connectionError || holdStatus === "missing" || holdStatus === "partial" ? "warning" : ""}`}><span />{area === "golf" || area === "pro-shop" || area === "clubhouse" || area === "platform" ? golfStatus : "Held directory"}</div></header>
+    <header className="operations-hero"><div><div className="eyebrow">{config.eyebrow}</div><h2>{config.title}</h2><p>{config.description}</p></div><div className="connection-badge warning"><span />{reportingHero || area === "platform" ? "Held copy" : "Held directory"}</div></header>
     <nav className="operations-tabs" aria-label={`${config.label} submenu`}>{config.tabs.map((tab) => <button aria-pressed={activeTab === tab} className={activeTab === tab ? "active" : ""} key={tab} onClick={() => setActiveTab(tab)} type="button">{tab}</button>)}</nav>
-    {(area === "golf" || area === "pro-shop" || area === "clubhouse") && <ReportRangeControl range={rangeSelection} onRangeChange={setRangeSelection} customStart={customStart} customEnd={customEnd} setCustomStart={setCustomStart} setCustomEnd={setCustomEnd} onRefresh={() => setReloadKey((value) => value + 1)} isLoading={isLoadingGolf} updatedAt={golfUpdatedAt} />}
-    {(area === "golf" || area === "pro-shop" || area === "clubhouse") && !connectionError && <HoldGapBanner coverage={area === "golf" ? golf?.coverage : commerce?.coverage} label={area === "golf" ? "Golf" : area === "pro-shop" ? "Pro shop" : "Clubhouse"} />}
-    {area === "golf" ? <GolfPanel golf={golf} error={connectionError} tab={activeTab} /> : area === "members" ? <MembersPanel tab={activeTab} /> : area === "pro-shop" || area === "clubhouse" ? <CommercePanel area={area} commerce={commerce} error={connectionError} tab={activeTab} /> : area === "automations" ? <AutomationsPanel tab={activeTab} /> : area === "platform" && activeTab === "Club settings" ? <ClubSettingsPanel /> : area === "platform" ? <PlatformPanel golf={golf} commerce={commerce} error={connectionError} tab={activeTab} /> : <EmptyArea area={area} tab={activeTab} />}
+    {reportingHero && <ReportRangeControl range={rangeSelection} onRangeChange={setRangeSelection} customStart={customStart} customEnd={customEnd} setCustomStart={setCustomStart} setCustomEnd={setCustomEnd} onRefresh={() => setReloadKey((value) => value + 1)} isLoading={isLoadingGolf} updatedAt={golfUpdatedAt} />}
+    {reportingHero && !connectionError && <HoldGapBanner coverage={area === "golf" ? golf?.coverage : commerce?.coverage} label={area === "golf" ? "Golf" : area === "pro-shop" ? "Pro shop" : "Clubhouse"} loadedEmpty={!isLoadingGolf && (area === "golf" ? !golf : !commerce)} />}
+    {area === "golf" ? <GolfPanel golf={golf} error={connectionError} tab={activeTab} loading={isLoadingGolf} /> : area === "members" ? <MembersPanel tab={activeTab} /> : area === "pro-shop" || area === "clubhouse" ? <CommercePanel area={area} commerce={commerce} error={connectionError} tab={activeTab} loading={isLoadingGolf} /> : area === "automations" ? <AutomationsPanel tab={activeTab} /> : area === "platform" && activeTab === "Club settings" ? <ClubSettingsPanel /> : area === "platform" ? <PlatformPanel golf={golf} commerce={commerce} error={connectionError} tab={activeTab} /> : <EmptyArea area={area} tab={activeTab} />}
   </section>;
 }
 
@@ -124,17 +119,18 @@ function formatMissingDays(days: string[]) {
   return ranges.join(", ");
 }
 
-function HoldGapBanner({ coverage, label }: { coverage?: HoldCoverage; label: string }) {
-  if (!coverage || coverage.status === "complete") return null;
-  if (coverage.status === "missing") {
-    return <section className="hold-gap missing"><strong>{label} is not synced for this range</strong><span>Missing {formatMissingDays(coverage.missingDays)}. Totals below use held days only — none yet. This is not a live ForeUp pull.</span></section>;
+function HoldGapBanner({ coverage, label, loadedEmpty }: { coverage?: HoldCoverage; label: string; loadedEmpty?: boolean }) {
+  if (loadedEmpty || coverage?.status === "missing") {
+    return <section className="hold-gap missing"><strong>{label} is not synced for this range</strong><span>{coverage?.missingDays?.length ? `Missing ${formatMissingDays(coverage.missingDays)}. ` : ""}No totals are invented for days that are not in the hold. This is not a live ForeUp pull.</span></section>;
   }
+  if (!coverage || coverage.status === "complete") return null;
   return <section className="hold-gap"><strong>{coverage.missingDays.length} day{coverage.missingDays.length === 1 ? "" : "s"} missing from the held copy</strong><span>Showing {coverage.heldDays.length} held day{coverage.heldDays.length === 1 ? "" : "s"}. Missing {formatMissingDays(coverage.missingDays)}.</span></section>;
 }
 
-function GolfPanel({ golf, error, tab }: { golf: GolfSnapshot | null; error: string | null; tab: string }) {
+function GolfPanel({ golf, error, tab, loading }: { golf: GolfSnapshot | null; error: string | null; tab: string; loading: boolean }) {
   if (error) return <section className="empty-area"><CircleGauge size={24} /><strong>Golf reporting needs attention</strong><span>{error}</span></section>;
-  if (!golf) return <section className="empty-area"><CircleGauge size={24} /><strong>Loading golf reporting</strong><span>No placeholder figures are displayed while the reporting database responds.</span></section>;
+  if (loading && !golf) return <section className="empty-area"><CircleGauge size={24} /><strong>Loading golf reporting</strong><span>No placeholder figures are displayed while the reporting database responds.</span></section>;
+  if (!golf || golf.coverage?.status === "missing") return null;
   const totalRounds = golf.member.rounds + golf.nonMember.rounds;
   const allRounds = totalRounds + golf.unclassifiedRounds;
   const memberShare = totalRounds ? golf.member.rounds / totalRounds : 0;
@@ -143,8 +139,6 @@ function GolfPanel({ golf, error, tab }: { golf: GolfSnapshot | null; error: str
   if (tab === "Non-member play") return <SegmentPanel label="Non-member play" segment={golf.nonMember} totalRounds={totalRounds} period={golf.period.label} variant="guest" />;
   if (tab === "Tee sheet") return <TeeSheetPanel golf={golf} />;
 
-  const classifiedPlayNote = totalRounds ? `${percent(memberShare)} of classified play` : "No classified play in this range";
-  const nonMemberPlayNote = totalRounds ? `${percent(1 - memberShare)} of classified play` : "No classified play in this range";
   const daily = golf.daily ?? [];
   const totalRevenue = daily.reduce((total, day) => total + day.revenue, 0);
   const totalGreenFees = daily.reduce((total, day) => total + day.greenFeeRevenue, 0);
@@ -246,11 +240,12 @@ function PlatformPanel({ golf, commerce, error, tab }: { golf: GolfSnapshot | nu
   return <><div className="period-bar"><span>{tab === "Data sync" ? "Data sync" : "Connections"}</span><strong>{period ? formatRange(period) : "Current reporting status"}</strong><small>Held days stay visible when a range has gaps.</small></div><div className="live-grid"><MetricCard label="Reporting hold" value={ready ? coverageLabel(golf?.coverage?.status === "missing" && commerce?.coverage?.status === "missing" ? golf?.coverage : golf?.coverage?.status === "complete" && commerce?.coverage?.status === "complete" ? golf?.coverage : { status: "partial", expectedDays: [], heldDays: [], missingDays: [], lastSyncedAt: null }) : "Needs attention"} note={ready ? "Interactive dashboards read the held copy only" : error ?? "Reporting hold is unavailable"} Icon={CircleGauge} /><MetricCard label="Golf coverage" value={coverageLabel(golf?.coverage)} note={coverageNote(golf?.coverage, `${golf?.period.label} has every expected daily fact`, "Run the daily ForeUp hold for this range")} Icon={Flag} /><MetricCard label="POS coverage" value={coverageLabel(commerce?.coverage)} note={coverageNote(commerce?.coverage, `${commerce?.period.label} includes every outlet/day row`, "Outlet days are missing from the hold")} Icon={ReceiptText} /><MetricCard label="Data source" value="Held copy" note="Interactive dashboards never query ForeUp directly" Icon={Cloud} /></div><article className="detail-card metric-explainer"><div><div className="eyebrow">Integrity guardrail</div><h3>What coverage means</h3><p>Golf shows every held day and lists missing dates. POS only totals days with all four outlet rows. Gaps never masquerade as slow days, and missing ranges never trigger a live ForeUp pull.</p></div><dl className="detail-list"><div><dt>Selected period</dt><dd>{period ? formatRange(period) : "—"}</dd></div><div><dt>Golf feed</dt><dd>{coverageLabel(golf?.coverage)}</dd></div><div><dt>POS feed</dt><dd>{coverageLabel(commerce?.coverage)}</dd></div><div><dt>Live ForeUp fallback</dt><dd>Disabled</dd></div></dl></article></>;
 }
 
-function CommercePanel({ area, commerce, error, tab }: { area: "pro-shop" | "clubhouse"; commerce: CommerceReport | null; error: string | null; tab: string }) {
+function CommercePanel({ area, commerce, error, tab, loading }: { area: "pro-shop" | "clubhouse"; commerce: CommerceReport | null; error: string | null; tab: string; loading: boolean }) {
   const department = area === "pro-shop" ? "proShop" : "clubhouse";
   const label = area === "pro-shop" ? "Pro shop" : "Clubhouse";
   if (error) return <section className="empty-area"><ReceiptText size={24} /><strong>{label} reporting needs attention</strong><span>{error}</span></section>;
-  if (!commerce) return <section className="empty-area"><ReceiptText size={24} /><strong>Loading {label.toLowerCase()} reporting</strong><span>No placeholder figures are displayed while the reporting hold responds.</span></section>;
+  if (loading && !commerce) return <section className="empty-area"><ReceiptText size={24} /><strong>Loading {label.toLowerCase()} reporting</strong><span>No placeholder figures are displayed while the reporting hold responds.</span></section>;
+  if (!commerce || commerce.coverage?.status === "missing") return null;
   if (area === "pro-shop" && tab === "Inventory") return <section className="empty-area"><ReceiptText size={24} /><strong>Inventory catalog is next</strong><span>ForeUp’s Items endpoint is mapped, but on-hand quantity and reorder level have not been imported yet. This remains explicit until the catalog sync is live.</span></section>;
   if (area === "clubhouse" && tab === "Events") return <section className="empty-area"><CalendarDays size={24} /><strong>Events feed is not connected</strong><span>POS revenue is live here. Event bookings and covers need their own verified ForeUp source before they appear.</span></section>;
   if (area === "clubhouse") return <FoodAndBeveragePanel commerce={commerce} tab={tab} />;
