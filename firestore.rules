@@ -10,6 +10,11 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Blocked outbound SMS log. Admin SDK only. Never store message body.
+    match /sms_attempts/{id} {
+      allow read, write: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

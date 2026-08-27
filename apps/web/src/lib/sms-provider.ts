@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "crypto";
+import { logBlockedSmsAttemptSafe } from "@/lib/sms-attempts";
 
 export type SmsProviderId = "twilio" | "none";
 export type SmsDeliveryStatus = "queued" | "sent" | "delivered" | "failed";
@@ -7,6 +8,8 @@ export type SmsSendInput = {
   to: string;
   body: string;
   statusCallback?: string;
+  intent?: "staff" | "inbound_reply" | "scheduled" | "automation" | "unknown";
+  actorUid?: string | null;
 };
 
 export type SmsSendResult = {
@@ -144,9 +147,21 @@ export async function sendSms(input: SmsSendInput): Promise<SmsSendResult> {
   const to = normalizePhone(input.to);
   if (!to) return { provider: "none", status: "failed", error: "Destination phone is missing." };
   if (!smsSendingEnabled()) {
+    logBlockedSmsAttemptSafe({
+      to,
+      intent: input.intent,
+      actorUid: input.actorUid,
+      blockReason: "kill_switch"
+    });
     return { provider: "none", status: "queued", error: SMS_HELD_MESSAGE };
   }
   if (!smsDestinationAllowed(to)) {
+    logBlockedSmsAttemptSafe({
+      to,
+      intent: input.intent,
+      actorUid: input.actorUid,
+      blockReason: "empty_allowlist"
+    });
     return { provider: "none", status: "queued" };
   }
   if (!twilioConfigured()) {
@@ -183,7 +198,7 @@ export function verifyTwilioSignature(requestUrl: string, params: Record<string,
   const token = process.env.TWILIO_AUTH_TOKEN;
   if (!token || !signature) return false;
   const sorted = Object.keys(params).sort().reduce((raw, key) => `${raw}${key}${params[key]}`, requestUrl);
-  const expected = createHmac("sha1", token).update(sorted).digest("base64");
+  const expected = createHmac("sha1", token).update(sorted, "utf8").digest("base64");
   const left = Buffer.from(expected);
   const right = Buffer.from(signature);
   return left.length === right.length && timingSafeEqual(left, right);
