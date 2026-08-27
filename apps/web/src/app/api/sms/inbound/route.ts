@@ -5,14 +5,14 @@ import {
   getOrCreateConversation,
   type InboxConversation
 } from "@/lib/inbox-store";
-import { getSmsProviderStatus, inboundMaySendReply, sendSms, twilioConfigured, verifyTwilioSignature, type SmsSendResult } from "@/lib/sms-provider";
+import { getSmsProviderStatus, inboundMaySendReply, sendSms, verifyTwilioSignature, type SmsSendResult } from "@/lib/sms-provider";
 import { verifiedStaff } from "@/lib/staff-access";
 
 function twiml(message?: string) {
   const body = message
     ? `<Response><Message>${escapeXml(message)}</Message></Response>`
     : "<Response></Response>";
-  return new NextResponse(`<?xml version="1.0" encoding="UTF-8"?>${body}`, {
+  return new NextResponse(`<?xml version=\"1.0\" encoding=\"UTF-8\"?>${body}`, {
     headers: { "Content-Type": "text/xml" }
   });
 }
@@ -28,7 +28,7 @@ function escapeXml(value: string) {
 
 export async function POST(request: NextRequest) {
   // Twilio inbound is not a staff session. Never require Firebase sign-in here.
-  // Authenticate the provider with the request signature instead.
+  // Always verify the provider signature and fail closed if it is missing.
   const form = await request.formData();
   const params: Record<string, string> = {};
   for (const [key, value] of form.entries()) {
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
 
   const signature = request.headers.get("x-twilio-signature");
   const requestUrl = process.env.TWILIO_WEBHOOK_URL || request.url;
-  if (twilioConfigured() && !verifyTwilioSignature(requestUrl, params, signature)) {
+  if (!verifyTwilioSignature(requestUrl, params, signature)) {
     return new NextResponse("Invalid Twilio signature.", { status: 403 });
   }
 
@@ -104,8 +104,6 @@ export async function POST(request: NextRequest) {
   } catch {
     // Delivery does not depend on inbox persist.
   }
-  // If REST send did not create a Twilio message, put the reply in TwiML
-  // so the inbound webhook still delivers one text.
   if (sent.sid || sent.status === "sent" || sent.status === "queued" && sent.provider === "twilio") {
     return twiml();
   }
